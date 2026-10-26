@@ -257,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
                         mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
                     mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
                     run(mux)
-                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
+                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text", "ffmpeg": FFMPEG, "shots": shot_manifest}
                     manifest_file = root / "render-manifest.json"
                     manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
                     bundle = io.BytesIO()
