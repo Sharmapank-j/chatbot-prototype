@@ -35,7 +35,7 @@ scripts/                  Windows bootstrap, preflight, render helpers
 docs/                     Setup, architecture, pipeline, troubleshooting
 ```
 
-Keep the Next.js application for user experience and APIs; run heavy OCR, CV, generation, and rendering in a Python worker/CLI so long jobs do not block server requests. Persist project metadata with the existing database abstraction only after the migration explicitly replaces chatbot-specific tables. Store binary outputs on disk for local mode; configure cloud object storage only in a separate optional deployment profile.
+Keep the Next.js application for user experience and APIs; run heavy OCR, CV, generation, and rendering in a Python worker/CLI so long jobs do not block server requests. Persist project metadata behind a project-owned storage interface; local mode should not require a hosted database. Store binary outputs on disk for local mode; configure cloud object storage only in a separate optional deployment profile.
 
 ## Data contracts
 
