@@ -25,9 +25,27 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
+# local env files and secrets
 .env
 .env*.local
+.env.local
+!.env.indica.example
+
+# Local comic projects, user media, generated output and model weights
+/workspace/
+/models/
+/exports/
+/artifacts/
+*.safetensors
+*.ckpt
+*.gguf
+*.onnx
+*.pt
+*.pth
+*.mp4
+*.mov
+*.wav
+*.mp3
 
 # vercel
 .vercel
