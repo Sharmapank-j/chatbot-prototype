@@ -11,6 +11,8 @@ import io
 import json
 import hashlib
 import os
+import urllib.request
+import urllib.error
 import re
 import shutil
 import subprocess
@@ -31,6 +33,13 @@ PIPER = os.environ.get("INDICA_PIPER_BIN", "piper")
 PIPER_MODEL = os.environ.get("INDICA_PIPER_MODEL", "").strip()
 PIPER_MODEL_HI = os.environ.get("INDICA_PIPER_MODEL_HI", "").strip()
 PIPER_MODEL_EN = os.environ.get("INDICA_PIPER_MODEL_EN", "").strip()
+LLAMA_SERVER = os.environ.get("INDICA_LLAMA_SERVER_BIN", "llama-server")
+LLAMA_HOST = "127.0.0.1"
+LLAMA_PORT = int(os.environ.get("INDICA_LLAMA_PORT", "8081"))
+LLAMA_LOCK = threading.Lock()
+LLAMA_PROCESS = None
+LLAMA_MODEL_NAME = ""
+MAX_MODEL_BYTES = int(os.environ.get("INDICA_MAX_GGUF_BYTES", str(200 * 1024 * 1024 * 1024)))
 MAX_BODY = 180 * 1024 * 1024
 MAX_SHOTS = 30
 FPS = 24
@@ -165,31 +174,154 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
-        if urlparse(self.path).path != "/health":
-            self._json(404, {"error": "Not found"})
+        path = urlparse(self.path).path
+        if path in ("/health", "/llama/status"):
+            llama = self._llama_health()
+            if path == "/llama/status":
+                self._json(200, llama)
+                return
+            self._json(200, {
+                "service": "indica-local-worker", "ffmpeg": command_available(FFMPEG),
+                "ffprobe": command_available(FFPROBE),
+                "piper": command_available(PIPER) and any(Path(model).is_file() for model in (PIPER_MODEL, PIPER_MODEL_HI, PIPER_MODEL_EN) if model),
+                "llamaCpp": llama["ready"], "llamaModel": LLAMA_MODEL_NAME or None,
+                "tokenRequired": True, "version": 2
+            })
             return
-        self._json(200, {
-            "service": "indica-local-worker",
-            "ffmpeg": command_available(FFMPEG),
-            "ffprobe": command_available(FFPROBE),
-            "piper": command_available(PIPER) and any(Path(model).is_file() for model in (PIPER_MODEL, PIPER_MODEL_HI, PIPER_MODEL_EN) if model),
-            "tokenRequired": True,
-            "version": 1
-        })
+        self._json(404, {"error": "Not found"})
+
+    def _llama_health(self) -> dict:
+        try:
+            with urllib.request.urlopen(f"http://{LLAMA_HOST}:{LLAMA_PORT}/health", timeout=1) as response:
+                data = json.loads(response.read(65536))
+            return {"ready": data.get("status", "ok") in ("ok", "no slot available"), "model": LLAMA_MODEL_NAME or None, "baseUrl": f"http://{LLAMA_HOST}:{LLAMA_PORT}/v1"}
+        except Exception:
+            return {"ready": False, "model": LLAMA_MODEL_NAME or None, "baseUrl": f"http://{LLAMA_HOST}:{LLAMA_PORT}/v1"}
+
+    def _read_json_body(self) -> dict:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > MAX_BODY:
+            raise ValueError("Request must be between 1 byte and 180 MB.")
+        data = json.loads(self.rfile.read(length))
+        if not isinstance(data, dict):
+            raise ValueError("Request body must be a JSON object.")
+        return data
+
+    def _require_token(self) -> bool:
+        if self.headers.get("Authorization", "") != "Bearer " + TOKEN:
+            self._json(401, {"error": "Invalid local worker token."})
+            return False
+        return True
 
     def do_POST(self) -> None:
-        if self.headers.get("Authorization", "") != "Bearer " + TOKEN:
-            self._json(401, {"error": "Invalid local worker token. Start the worker and copy its token from the terminal."})
+        path = urlparse(self.path).path
+        if path == "/llama/load":
+            if not self._require_token():
+                return
+            try:
+                data = self._read_json_body()
+                model_path = Path(str(data.get("modelPath", ""))).expanduser().resolve()
+                if model_path.suffix.lower() != ".gguf" or not model_path.is_file():
+                    self._json(400, {"error": "Choose an existing local .gguf model file."})
+                    return
+                if model_path.stat().st_size <= 0 or model_path.stat().st_size > MAX_MODEL_BYTES:
+                    self._json(413, {"error": "GGUF model exceeds the configured local model-size limit."})
+                    return
+                if not command_available(LLAMA_SERVER):
+                    self._json(400, {"error": "llama-server is not installed or not on PATH. Install llama.cpp or connect to an already running local server."})
+                    return
+                wait_seconds = max(5, min(1800, int(data.get("waitSeconds", 90))))
+                context = max(512, min(16384, int(data.get("contextTokens", 4096))))
+                gpu_layers = max(-1, min(999, int(data.get("gpuLayers", -1))))
+                global LLAMA_PROCESS, LLAMA_MODEL_NAME
+                with LLAMA_LOCK:
+                    if LLAMA_PROCESS and LLAMA_PROCESS.poll() is None:
+                        LLAMA_PROCESS.terminate()
+                        try:
+                            LLAMA_PROCESS.wait(timeout=8)
+                        except subprocess.TimeoutExpired:
+                            LLAMA_PROCESS.kill()
+                    LLAMA_MODEL_NAME = model_path.name
+                    log_path = Path(tempfile.gettempdir()) / "indica-llama-server.log"
+                    log_handle = open(log_path, "w", encoding="utf-8")
+                    LLAMA_PROCESS = subprocess.Popen([
+                        LLAMA_SERVER, "--host", LLAMA_HOST, "--port", str(LLAMA_PORT),
+                        "--model", str(model_path), "--alias", model_path.stem,
+                        "--ctx-size", str(context), "--n-gpu-layers", str(gpu_layers)
+                    ], stdout=log_handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                deadline = time.time() + wait_seconds
+                while time.time() < deadline:
+                    if LLAMA_PROCESS.poll() is not None:
+                        self._json(500, {"error": f"llama-server exited during model loading. Inspect its local log: {log_path}"})
+                        return
+                    if self._llama_health()["ready"]:
+                        self._json(200, {"ready": True, "model": LLAMA_MODEL_NAME, "message": "GGUF model ready for local chat."})
+                        return
+                    time.sleep(1)
+                self._json(202, {"ready": False, "model": LLAMA_MODEL_NAME, "message": "Model is still loading. Check status again."})
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._json(500, {"error": str(exc)[:800]})
             return
-        if urlparse(self.path).path != "/render":
+        if path == "/llama/unload":
+            if not self._require_token():
+                return
+            global LLAMA_PROCESS, LLAMA_MODEL_NAME
+            with LLAMA_LOCK:
+                if LLAMA_PROCESS and LLAMA_PROCESS.poll() is None:
+                    LLAMA_PROCESS.terminate()
+                    try:
+                        LLAMA_PROCESS.wait(timeout=8)
+                    except subprocess.TimeoutExpired:
+                        LLAMA_PROCESS.kill()
+                LLAMA_PROCESS = None
+                LLAMA_MODEL_NAME = ""
+            self._json(200, {"ready": False, "message": "Local GGUF model unloaded."})
+            return
+        if path == "/llama/chat":
+            if not self._require_token():
+                return
+            try:
+                data = self._read_json_body()
+                prompt = str(data.get("prompt", "")).strip()
+                if not prompt or len(prompt) > 12000:
+                    self._json(400, {"error": "Prompt must be between 1 and 12000 characters."})
+                    return
+                if not self._llama_health()["ready"]:
+                    self._json(503, {"error": "No ready local llama.cpp server. Load a GGUF model first."})
+                    return
+                body = json.dumps({
+                    "model": LLAMA_MODEL_NAME or "local-gguf",
+                    "messages": [
+                        {"role": "system", "content": str(data.get("system", "You are a comic-to-anime production assistant."))[:4000]},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.4, "max_tokens": max(64, min(4096, int(data.get("maxTokens", 1200))))
+                }).encode()
+                request = urllib.request.Request(
+                    f"http://{LLAMA_HOST}:{LLAMA_PORT}/v1/chat/completions", data=body,
+                    headers={"Content-Type": "application/json"}, method="POST"
+                )
+                with urllib.request.urlopen(request, timeout=300) as response:
+                    result = json.loads(response.read(10 * 1024 * 1024))
+                answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if not isinstance(answer, str) or not answer.strip():
+                    self._json(502, {"error": "Local llama.cpp returned an empty response."})
+                    return
+                self._json(200, {"text": answer.strip(), "model": LLAMA_MODEL_NAME, "local": True})
+            except urllib.error.HTTPError as exc:
+                self._json(502, {"error": f"llama.cpp returned HTTP {exc.code}."})
+            except Exception as exc:
+                self._json(502, {"error": f"Local llama.cpp request failed: {str(exc)[:400]}"})
+            return
+        if path != "/render":
             self._json(404, {"error": "Not found"})
             return
+        if not self._require_token():
+            return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > MAX_BODY:
-                self._json(413, {"error": "Render request must be between 1 byte and 180 MB."})
-                return
-            data = json.loads(self.rfile.read(length))
+            data = self._read_json_body()
             shots = data.get("shots")
             if not isinstance(shots, list) or not shots or len(shots) > MAX_SHOTS:
                 raise ValueError("Render requires 1–30 storyboard shots.")
