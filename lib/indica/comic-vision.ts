@@ -15,7 +15,7 @@ type PdfJsApi = {
   GlobalWorkerOptions: { workerSrc: string }
   getDocument(input: { data: Uint8Array }): { promise: Promise<{ numPages: number; getPage(n: number): Promise<{ getViewport(input: { scale: number }): { width: number; height: number }; render(input: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }): { promise: Promise<void> } }> }> }
 }
-type BrowserWindow = Window & { cv?: CvApi; Tesseract?: TesseractApi; pdfjsLib?: PdfJsApi; __indicaScripts?: Record<string, Promise<void>> }
+type BrowserWindow = Window & { cv?: CvApi; Tesseract?: TesseractApi; pdfjsLib?: PdfJsApi; __indicaScripts?: Record<string, Promise<void> | undefined> }
 
 function loadScript(url: string): Promise<void> {
   const host = window as BrowserWindow
