@@ -129,9 +129,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(origin)
             host = (parsed.hostname or "").lower()
-            if parsed.scheme == "http" and host in ("localhost", "127.0.0.1", "[::1]"):
+            if parsed.scheme == "http" and host in ("localhost", "127.0.0.1", "::1"):
                 return origin
-            if parsed.scheme == "https" and (host.endswith(".vercel.app") or host.endswith(".indica-anime-us.local")):
+            if parsed.scheme == "https" and host.endswith(".vercel.app"):
                 return origin
         except Exception:
             pass
