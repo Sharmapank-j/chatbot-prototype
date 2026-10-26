@@ -1,11 +1,11 @@
 # Roadmap
 
-## P0 — Branch migration and safety
-- Replace product identity and chatbot copy/routes in this branch only.
-- Inventory chatbot auth/database/API dependencies before removal.
-- Retain required upstream licence notices and audit all references' licences.
+## P0 — Product foundation and safety
+- Establish a consistent product identity, navigation and setup experience.
+- Audit authentication, persistence, API boundaries and dependency usage against the product requirements.
+- Maintain required dependency licence notices and complete a software/model licence review.
 - Add Windows preflight and ensure no secrets are committed.
-- Run typecheck, lint, tests and build after each migration step.
+- Run typecheck, lint, tests and build after each implementation step.
 
 ## P1 — Offline motion-comic vertical slice
 - Folder-backed projects; import multiple images and PDFs.
