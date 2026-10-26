@@ -1,16 +1,16 @@
 # Agent Instructions
 
-You are working on Indica Anime Us, not the original Chatbot UI product. Follow this document when using Claude Code, OpenCode, Codex, Copilot or any other coding agent.
+You are working on Indica Anime Us. Follow this document when using Claude Code, OpenCode, Codex, Copilot or any other coding agent.
 
 ## Before edits
 1. Read README, architecture, roadmap, offline contract, contributing guide and current licence.
-2. Inventory current code; classify reusable UI/auth/LLM infrastructure vs chatbot-only routes/schema.
-3. Review licences of reference projects before copying any source code.
+2. Inventory UI, authentication, model-provider, API and persistence dependencies before changing them.
+3. Review licences for every dependency, model, dataset and source artifact before reuse.
 4. Define an end-to-end vertical slice with tests before broad refactors.
 5. Never assert a feature is working unless implementation and tests prove it.
 
 ## Guardrails
-- Keep `main` untouched; work on `indica-anime-us`.
+- Work on the designated product branch and keep changes scoped.
 - No mass deletion until a file/dependency/database migration plan and rollback exist.
 - Never change repo visibility, secrets, billing, deployments or production data without explicit approval.
 - Do not commit private comic pages, generated videos, model weights, credentials or `.env.local`.
