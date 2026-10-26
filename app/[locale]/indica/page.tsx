@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { IconArrowLeft, IconBook2, IconCheck, IconFileTypePdf, IconMovie, IconPhoto, IconRefresh, IconShieldLock, IconVolume } from "@tabler/icons-react"
 import Link from "next/link"
 
@@ -15,32 +15,72 @@ export default function IndicaWorkspacePage() {
   const [readingDirection, setReadingDirection] = useState("ltr")
   const [mode, setMode] = useState("offline")
   const [notice, setNotice] = useState("")
+  const [isDragging, setIsDragging] = useState(false)
+  const objectUrls = useRef(new Set<string>())
+  useEffect(() => () => {
+    objectUrls.current.forEach(url => URL.revokeObjectURL(url))
+    objectUrls.current.clear()
+  }, [])
   const totalBytes = useMemo(() => files.reduce((sum, item) => sum + item.file.size, 0), [files])
 
-  function addFiles(list: FileList | null) {
+  function addFiles(list: FileList | File[] | null) {
     if (!list) return
     const next: ComicFile[] = []
-    for (const file of Array.from(list)) {
-      if (!accepted.has(file.type)) {
-        setNotice(`${file.name} skipped: choose JPG, PNG, WEBP or PDF.`)
+    const issues: string[] = []
+    const currentKeys = new Set(files.map(item => `${item.file.name}:${item.file.size}:${item.file.lastModified}`))
+    const candidates = Array.from(list)
+    const remainingSlots = Math.max(0, 30 - files.length)
+    if (candidates.length > remainingSlots) issues.push(`Only 30 source files are supported per project; ${remainingSlots} slot(s) remain.`)
+    for (const file of candidates.slice(0, remainingSlots)) {
+      const extension = file.name.toLowerCase().split(".").pop()
+      const kind = file.type === "application/pdf" || extension === "pdf"
+        ? "pdf"
+        : file.type.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(extension ?? "")
+          ? "image"
+          : null
+      if (!kind || (kind === "pdf" && file.type && file.type !== "application/pdf") || (kind === "image" && file.type && !file.type.startsWith("image/"))) {
+        issues.push(`${file.name}: unsupported file type. Choose JPG, PNG, WEBP or PDF.`)
+        continue
+      }
+      if (file.size === 0) {
+        issues.push(`${file.name}: file is empty.`)
         continue
       }
       if (file.size > 100 * 1024 * 1024) {
-        setNotice(`${file.name} skipped: maximum file size is 100 MB.`)
+        issues.push(`${file.name}: maximum file size is 100 MB.`)
         continue
       }
-      next.push({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file), kind: file.type === "application/pdf" ? "pdf" : "image" })
+      const key = `${file.name}:${file.size}:${file.lastModified}`
+      if (currentKeys.has(key)) {
+        issues.push(`${file.name}: duplicate selection skipped.`)
+        continue
+      }
+      currentKeys.add(key)
+      const url = URL.createObjectURL(file)
+      objectUrls.current.add(url)
+      next.push({ id: crypto.randomUUID(), file, url, kind })
     }
-    setFiles(current => [...current, ...next])
-    if (next.length) setNotice(`${next.length} file(s) added to this browser session. No files have been uploaded.`)
+    const newTotal = files.reduce((sum, item) => sum + item.file.size, 0) + next.reduce((sum, item) => sum + item.file.size, 0)
+    if (newTotal > 500 * 1024 * 1024) {
+      next.forEach(item => { URL.revokeObjectURL(item.url); objectUrls.current.delete(item.url) })
+      setNotice("Selection exceeds the 500 MB total project limit. Remove some files and try again.")
+      return
+    }
+    if (next.length) setFiles(current => [...current, ...next])
+    setNotice([
+      next.length ? `${next.length} file(s) added to this browser session. No files have been uploaded.` : "",
+      ...issues.slice(0, 3),
+      issues.length > 3 ? `And ${issues.length - 3} more issue(s).` : ""
+    ].filter(Boolean).join(" "))
   }
 
   function removeFile(id: string) {
-    setFiles(current => {
-      const found = current.find(file => file.id === id)
-      if (found) URL.revokeObjectURL(found.url)
-      return current.filter(file => file.id !== id)
-    })
+    const found = files.find(file => file.id === id)
+    if (found) {
+      URL.revokeObjectURL(found.url)
+      objectUrls.current.delete(found.url)
+    }
+    setFiles(current => current.filter(file => file.id !== id))
   }
 
   return (
@@ -57,14 +97,14 @@ export default function IndicaWorkspacePage() {
         <div className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section>
             <div className="mb-5 flex items-end justify-between gap-3">
-              <div><p className="text-xs font-medium uppercase tracking-[.2em] text-violet-200/70">01 / Source pages</p><h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Start from your comic</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">Choose a batch of comic images or a PDF. This early workspace keeps them in browser memory for preview only; full local project persistence is part of the next implementation stage.</p></div>
+              <div><p className="text-xs font-medium uppercase tracking-[.2em] text-violet-200/70">01 / Source pages</p><h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Start from your comic</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">Choose a batch of comic images or a PDF. Files stay in browser memory for preview only; persistent local projects are not yet implemented.</p></div>
               <div className="hidden rounded-xl border border-white/10 bg-white/[.03] p-3 text-right sm:block"><div className="text-2xl font-semibold">{files.length.toString().padStart(2,"0")}</div><div className="text-[10px] uppercase tracking-widest text-white/40">Files selected</div></div>
             </div>
 
-            <label className="group flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-violet-200/25 bg-gradient-to-br from-violet-300/[.06] via-white/[.02] to-cyan-300/[.03] px-6 py-8 text-center transition hover:border-violet-200/50 hover:bg-violet-200/[.05]">
+            <label onDragOver={event => { event.preventDefault(); setIsDragging(true) }} onDragLeave={event => { event.preventDefault(); setIsDragging(false) }} onDrop={event => { event.preventDefault(); setIsDragging(false); addFiles(event.dataTransfer.files) }} className={`group flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-8 text-center transition ${isDragging ? "border-violet-200 bg-violet-200/[.08]" : "border-violet-200/25 bg-gradient-to-br from-violet-300/[.06] via-white/[.02] to-cyan-300/[.03] hover:border-violet-200/50 hover:bg-violet-200/[.05]"}`}>
               <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[.04] text-violet-100"><IconBook2 size={25} /></span>
               <span className="text-base font-semibold">Drop comic pages here or browse files</span>
-              <span className="mt-2 max-w-md text-xs leading-5 text-white/45">JPG, PNG, WEBP or PDF · multiple images supported · 100 MB maximum per file</span>
+              <span className="mt-2 max-w-md text-xs leading-5 text-white/45">JPG, PNG, WEBP or PDF · up to 30 files · 100 MB each / 500 MB total</span>
               <span className="mt-5 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black">Choose source files</span>
               <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple onChange={event => { addFiles(event.currentTarget.files); event.currentTarget.value = "" }} />
             </label>
@@ -73,7 +113,7 @@ export default function IndicaWorkspacePage() {
 
             {files.length > 0 ? (
               <div className="mt-5">
-                <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Selected sources</h2><button type="button" onClick={() => { files.forEach(file => URL.revokeObjectURL(file.url)); setFiles([]); setNotice("Source list cleared.") }} className="text-xs text-white/40 hover:text-white">Clear all</button></div>
+                <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Selected sources</h2><button type="button" onClick={() => { files.forEach(file => { URL.revokeObjectURL(file.url); objectUrls.current.delete(file.url) }); setFiles([]); setNotice("Source list cleared.") }} className="text-xs text-white/40 hover:text-white">Clear all</button></div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {files.map((item, index) => <article key={item.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/[.025]">
                     <div className="flex aspect-[4/3] items-center justify-center bg-[#11131b]">
@@ -86,7 +126,7 @@ export default function IndicaWorkspacePage() {
                     </div>
                   </article>)}
                 </div>
-                <div className="mt-3 text-xs text-white/35">{files.length} source(s) · {(totalBytes / 1024 / 1024).toFixed(2)} MB selected · order follows selection order in this draft</div>
+                <div className="mt-3 text-xs text-white/35">{files.length} source(s) · {(totalBytes / 1024 / 1024).toFixed(2)} MB selected · order follows selection order</div>
               </div>
             ) : <div className="mt-5 rounded-xl border border-white/10 bg-white/[.02] p-5 text-sm text-white/40">No sources selected yet. Start by adding a batch of pages.</div>}
 
