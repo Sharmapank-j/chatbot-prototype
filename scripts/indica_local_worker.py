@@ -324,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json(502, {"error": f"Local llama.cpp request failed: {str(exc)[:400]}"})
             return
-        if path != "/render":
+        if path not in ("/render",):
             self._json(404, {"error": "Not found"})
             return
         if not self._require_token():
