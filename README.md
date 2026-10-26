@@ -20,7 +20,7 @@ Upload multiple comic page images or a PDF. Indica Anime Us should automatically
 Requirements: Windows 10/11, Git, Node.js 20+, Python 3.11+, FFmpeg. Python CV/OCR extras are optional but recommended.
 
 ```powershell
-git clone --branch indica-anime-us https://github.com/Sharmapank-j/chatbot-prototype.git indica-anime-us
+git clone --branch indica-anime-us <repository-url> indica-anime-us
 cd indica-anime-us
 .\scripts\setup-windows.ps1
 ```
