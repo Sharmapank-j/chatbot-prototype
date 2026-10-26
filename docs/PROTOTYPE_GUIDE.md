@@ -9,7 +9,7 @@ Open the Vercel preview for the latest successful deployment, then open the work
 1. Create a project and import JPG, PNG, WEBP, PDF or supported video files. Video/PDF processing creates browser-side page/frame images. Batch limits apply.
 2. Review shot order and edit shot title, speaker, dialogue, start, duration, zoom and crop.
 3. Use Rectify pages, Detect panels and Run OCR. PDF.js rasterizes up to 30 pages per import operation; Tesseract.js runs English or Hindi+English OCR. Engines/language data load on demand from public CDNs, so the first run requires network access. Verify every OCR result.
-4. Optionally open AI and configure an OpenAI-compatible HTTPS endpoint and vision-capable model. Analyze a selected panel, generate a scene plan, apply extracted dialogue or submit an image-generation prompt. Cloud inference sends the selected image/prompt to that provider.
+4. Optionally open AI and choose Hosted API or Local GGUF. Hosted vision/image generation uses the configured OpenAI-compatible HTTPS endpoint; local llama.cpp is text-only and sends prompts through the loopback worker. Analyze a selected panel, generate a scene plan, apply extracted dialogue or submit an image-generation prompt. Cloud inference sends the selected image/prompt to that provider.
 5. Export a portable .indica.json bundle with source assets; restore a bundle on another device. Corrupt data, unsupported bundle versions, invalid asset references, size mismatches and invalid crop coordinates are rejected.
 
 ## Deterministic local rendering and speech
