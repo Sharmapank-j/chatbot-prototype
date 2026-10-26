@@ -455,7 +455,7 @@ export default function IndicaWorkspacePage() {
       const parsed=JSON.parse(jsonText) as {dialogue?:Array<{speaker?:string;text?:string;exact_text?:string}>;visible_text?:Array<{text?:string;exact_text?:string;kind?:string}>}
       const lines=(parsed.dialogue??[]).map(item=>({speaker:item.speaker??"",text:item.text??item.exact_text??""})).filter(item=>item.text.trim())
       const visible=(parsed.visible_text??[]).map(item=>item.text??item.exact_text??"").filter(Boolean)
-      const text=lines.length?lines.map(item=>item.text).join("\\n"):visible.join("\\n")
+      const text=lines.length?lines.map(item=>item.text).join("\n"):visible.join("\\n")
       if(!text.trim())throw new Error("No readable dialogue was found in the model response.")
       updateShot(activeShot.id,{dialogue:text,...(lines[0]?.speaker?{speaker:lines[0].speaker}:{})})
       setNotice("Applied the vision model's extracted text to the selected shot. Verify every line before export.")
