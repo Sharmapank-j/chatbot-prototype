@@ -124,9 +124,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def _origin(self) -> str:
         origin = self.headers.get("Origin", "")
-        host = (urlparse(origin).hostname or "").lower()
-        if not origin or host in ("localhost", "127.0.0.1") or host.endswith(".vercel.app"):
-            return origin or "*"
+        if not origin:
+            return ""
+        try:
+            parsed = urlparse(origin)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme == "http" and host in ("localhost", "127.0.0.1", "[::1]"):
+                return origin
+            if parsed.scheme == "https" and (host.endswith(".vercel.app") or host.endswith(".indica-anime-us.local")):
+                return origin
+        except Exception:
+            pass
         return ""
 
     def _headers(self, content_type: str = "application/json", length: int | None = None) -> None:
