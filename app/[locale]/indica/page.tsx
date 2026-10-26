@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
   IconArrowLeft, IconBook2, IconCheck, IconChevronDown, IconChevronUp,
@@ -149,7 +149,7 @@ export default function IndicaWorkspacePage() {
   const [notice, setNotice] = useState("Loading local workspace…")
   const [isDragging, setIsDragging] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [activeTab, setActiveTab] = useState<"storyboard"|"dialogue"|"export">("storyboard")
+  const [activeTab, setActiveTab] = useState<"assets"|"storyboard"|"dialogue"|"export">("storyboard")
   const [renderProgress, setRenderProgress] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const previewCanvas = useRef<HTMLCanvasElement>(null)
@@ -158,18 +158,18 @@ export default function IndicaWorkspacePage() {
   const duration = useMemo(() => project?.shots.reduce((n, s) => Math.max(n, s.start + s.duration), 0) ?? 0, [project])
   const activeShot = project?.shots.find(s => s.id === selectedShot) ?? project?.shots[0] ?? null
 
-  const refreshProjects = useCallback(async () => {
-    try {
-      const all = await listProjects()
+  useEffect(() => {
+    let cancelled = false
+    void listProjects().then(all => {
+      if (cancelled) return
       setProjects(all)
-      if (!project && all.length) setProject(all[0])
+      setProject(current => current ?? all[0] ?? null)
       setNotice(all.length ? "Local projects loaded. Source files remain on this device." : "Ready. Create a project or import comic pages to begin.")
-    } catch {
-      setNotice("Local storage is unavailable in this browser session. Try a current browser with site storage enabled.")
-    }
-  }, [project])
-
-  useEffect(() => { void refreshProjects() }, []) // load once on mount
+    }).catch(() => {
+      if (!cancelled) setNotice("Local storage is unavailable in this browser session. Try a current browser with site storage enabled.")
+    })
+    return () => { cancelled = true }
+  }, [])
   useEffect(() => {
     if (!project) return
     const timer = window.setTimeout(async () => {
@@ -440,9 +440,11 @@ export default function IndicaWorkspacePage() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-                <div className="flex gap-1 rounded-lg border border-white/10 bg-white/[.025] p-1">{(["storyboard","dialogue","export"] as const).map(tab=><button key={tab} onClick={()=>setActiveTab(tab)} className={`rounded-md px-3 py-2 text-xs capitalize ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
+                <div className="flex gap-1 rounded-lg border border-white/10 bg-white/[.025] p-1">{(["assets","storyboard","dialogue","export"] as const).map(tab=><button key={tab} onClick={()=>setActiveTab(tab)} className={`rounded-md px-3 py-2 text-xs capitalize ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
                 <div className="flex flex-wrap gap-2"><button disabled={busy||!project.assets.length} onClick={()=>void detectPanels()} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40"><IconRefresh size={14} className="mr-1 inline"/> Detect panels</button></div>
               </div>
+
+              {activeTab==="assets"&&<div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold">Source asset library</h2><p className="mt-1 text-xs text-white/40">Original image files stored in this browser’s IndexedDB.</p></div><button onClick={()=>fileInput.current?.click()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/[.05]"><IconPlus size={14} className="mr-1 inline"/> Add assets</button></div>{project.assets.length?<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{project.assets.map((asset,index)=><AssetCard key={asset.id} asset={asset} index={index} onRemove={()=>updateProject({assets:project.assets.filter(a=>a.id!==asset.id),shots:project.shots.filter(s=>s.assetId!==asset.id)})}/>)}</div>:<Empty text="No source assets yet. Import comic page images above."/>}</div>}
 
               {activeTab==="storyboard"&&<div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
@@ -470,7 +472,12 @@ export default function IndicaWorkspacePage() {
 function Status({label,state}:{label:string;state:string}) { return <div className="flex items-center justify-between gap-2"><span className="text-white/45">{label}</span><span className="text-right text-[10px] text-emerald-100/65">{state}</span></div> }
 function Metric({label,value}:{label:string;value:string}) { return <div className="rounded-xl border border-white/10 bg-white/[.025] p-3"><div className="text-[10px] uppercase tracking-widest text-white/35">{label}</div><div className="mt-2 text-xl font-semibold">{value}</div></div> }
 function Empty({text}:{text:string}) { return <div className="rounded-xl border border-dashed border-white/10 p-7 text-center text-xs leading-5 text-white/35">{text}</div> }
-function ShotCard({shot,index,selected,asset,onSelect,onMove,onRemove,url}:{shot:Shot;index:number;selected:boolean;asset?:Asset;onSelect:()=>void;onMove:(delta:number)=>void;onRemove:()=>void}) {
+function AssetCard({asset,index,onRemove}:{asset:Asset;index:number;onRemove:()=>void}) {
+  const [src,setSrc] = useState("")
+  useEffect(()=>{const url=URL.createObjectURL(asset.blob);setSrc(url);return()=>URL.revokeObjectURL(url)},[asset])
+  return <article className="overflow-hidden rounded-xl border border-white/10 bg-black/10"><div className="flex aspect-video items-center justify-center bg-[#090a10]">{src?<img src={src} alt={asset.name} className="h-full w-full object-contain"/>:<IconBook2 size={24} className="text-white/20"/>}</div><div className="p-3"><div className="truncate text-xs font-medium">{index+1}. {asset.name}</div><div className="mt-1 text-[10px] text-white/35">{(asset.size/1024/1024).toFixed(2)} MB</div><button onClick={onRemove} className="mt-3 w-full rounded-lg border border-white/10 py-2 text-xs text-white/55 hover:border-red-200/25 hover:text-red-100">Remove asset & linked shots</button></div></article>
+}
+function ShotCard({shot,index,selected,asset,onSelect,onMove,onRemove}:{shot:Shot;index:number;selected:boolean;asset?:Asset;onSelect:()=>void;onMove:(delta:number)=>void;onRemove:()=>void}) {
   const [src,setSrc] = useState("")
   useEffect(()=>{if(!asset){setSrc("");return}const next=URL.createObjectURL(asset.blob);setSrc(next);return()=>URL.revokeObjectURL(next)},[asset])
   return <article className={`overflow-hidden rounded-xl border ${selected?"border-violet-200/50 bg-violet-200/[.05]":"border-white/10 bg-black/10"}`}><button onClick={onSelect} className="block w-full text-left"><div className="flex aspect-video items-center justify-center bg-[#090a10]">{src?<img src={src} alt={asset?.name??shot.title} className="h-full w-full object-contain"/>:<IconBook2 size={26} className="text-white/20"/>}</div><div className="p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-xs font-medium">{index+1}. {shot.title}</span><span className="shrink-0 text-[10px] text-white/35">{shot.duration.toFixed(1)}s</span></div><p className="mt-1 line-clamp-2 text-[10px] text-white/40">{shot.dialogue||"No dialogue yet"}</p></div></button><div className="flex items-center justify-between border-t border-white/10 px-2 py-1.5"><span className="text-[10px] text-white/35">{fmt(shot.start)} start</span><div className="flex"><button onClick={()=>onMove(-1)} aria-label="Move shot up" className="rounded p-1 text-white/45 hover:bg-white/10"><IconChevronUp size={14}/></button><button onClick={()=>onMove(1)} aria-label="Move shot down" className="rounded p-1 text-white/45 hover:bg-white/10"><IconChevronDown size={14}/></button><button onClick={onRemove} aria-label="Remove shot" className="rounded p-1 text-white/35 hover:text-red-200"><IconTrash size={14}/></button></div></div></article>
