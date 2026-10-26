@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"\nimport { isIP } from "node:net"
+import { NextRequest, NextResponse } from "next/server"\nimport { parseImageDataUrl, validateProviderUrl } from "@/lib/indica/provider-validation"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -12,7 +12,6 @@ type ProviderInput = {
   imageDataUrl?: string
 }
 
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024
 const MAX_PROMPT_CHARS = 12000
 const MAX_KEY_CHARS = 4096
 
@@ -20,30 +19,8 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
-function validateProviderUrl(value: string): URL | null {
-  try {
-    const url = new URL(value)
-    if (url.protocol !== "https:") return null
-    if (url.username || url.password) return null
-    const host = url.hostname.toLowerCase()
-    if (host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "::1" || host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("172.16.") || host.endsWith(".internal")) return null
-    return url
-  } catch {
-    return null
-  }
-}
-
 function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, "")
-}
-
-function parseImageDataUrl(value: string): { mime: string; base64: string; size: number } | null {
-  const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(value)
-  if (!match) return null
-  const base64 = match[2].replace(/\s/g, "")
-  const size = Math.floor(base64.length * 3 / 4)
-  if (size <= 0 || size > MAX_IMAGE_BYTES) return null
-  return { mime: match[1], base64, size }
 }
 
 async function readProviderError(response: Response) {
