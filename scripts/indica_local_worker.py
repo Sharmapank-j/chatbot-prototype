@@ -411,7 +411,37 @@ class Handler(BaseHTTPRequestHandler):
                         mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
                     mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
                     run(mux)
-                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text" if subtitles else None, "ffmpeg": FFMPEG, "shots": shot_manifest}
+                    # Probe actual output instead of relying only on FFmpeg exit status.
+                    probe = subprocess.run(
+                        [FFPROBE, "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels", "-show_entries", "format=duration", "-of", "json", str(final_video)],
+                        capture_output=True, text=True, timeout=30, check=False
+                    )
+                    if probe.returncode:
+                        raise RuntimeError("FFprobe could not validate the generated MP4.")
+                    probe_data = json.loads(probe.stdout)
+                    stream_list = probe_data.get("streams", [])
+                    video_stream = next((stream for stream in stream_list if stream.get("codec_type") == "video"), None)
+                    audio_stream = next((stream for stream in stream_list if stream.get("codec_type") == "audio"), None)
+                    if not video_stream or video_stream.get("codec_name") != "h264":
+                        raise RuntimeError("Rendered MP4 is missing an H.264 video stream.")
+                    if not audio_stream or audio_stream.get("codec_name") != "aac":
+                        raise RuntimeError("Rendered MP4 is missing an AAC audio stream.")
+                    actual_duration = float(probe_data.get("format", {}).get("duration", 0))
+                    if actual_duration < cursor - (1 / FPS) or actual_duration > cursor + 0.15:
+                        raise RuntimeError("Rendered MP4 duration does not match its timeline.")
+                    wav_probe = subprocess.run(
+                        [FFPROBE, "-v", "error", "-show_entries", "stream=codec_type,codec_name,sample_rate,channels", "-show_entries", "format=duration", "-of", "json", str(voice_track)],
+                        capture_output=True, text=True, timeout=30, check=False
+                    )
+                    if wav_probe.returncode:
+                        raise RuntimeError("FFprobe could not validate the WAV voice track.")
+                    wav_data = json.loads(wav_probe.stdout)
+                    wav_stream = next((stream for stream in wav_data.get("streams", []) if stream.get("codec_type") == "audio"), None)
+                    if not wav_stream or wav_stream.get("codec_name") != "pcm_s16le" or wav_stream.get("sample_rate") != "24000":
+                        raise RuntimeError("Voice track must be 24 kHz PCM WAV.")
+                    if abs(float(wav_data.get("format", {}).get("duration", 0)) - cursor) > 0.15:
+                        raise RuntimeError("WAV voice-track duration does not match the timeline.")
+                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text" if subtitles else None, "ffmpeg": FFMPEG, "ffprobe": FFPROBE, "validated": {"videoH264": True, "audioAAC": True, "voiceWavPcm24k": True, "durationSeconds": round(actual_duration, 6)}, "shots": shot_manifest}
                     manifest_file = root / "render-manifest.json"
                     manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
                     bundle = io.BytesIO()
