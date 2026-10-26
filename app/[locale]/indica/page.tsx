@@ -565,18 +565,19 @@ export default function IndicaWorkspacePage() {
   function safeName(name:string) { return name.trim().replace(/[^a-z0-9-_]+/gi,"-").replace(/^-|-$/g,"").slice(0,60)||"indica-project" }
 
   return (
-    <main className="min-h-screen bg-[#08090d] text-white">
-      <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-7">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+    <main className="min-h-dvh overflow-x-clip bg-[#08090d] text-white selection:bg-violet-300/25">
+      <div className="mx-auto w-full max-w-[1720px] px-3 py-3 sm:px-5 sm:py-5 lg:px-7">
+        <header className="sticky top-0 z-30 -mx-3 mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#08090d]/95 px-3 py-3 backdrop-blur-xl sm:static sm:mx-0 sm:mb-0 sm:bg-transparent sm:px-0 sm:pb-4">
           <div className="flex items-center gap-3">
+            <button onClick={()=>setMobileSidebarOpen(v=>!v)} aria-expanded={mobileSidebarOpen} aria-label="Toggle project navigation" className="rounded-lg border border-white/10 p-2 text-white/65 hover:bg-white/[.06] lg:hidden"><IconFolder size={18}/></button>
             <Link href="/" aria-label="Back home" className="rounded-lg border border-white/10 p-2 text-white/60 hover:text-white"><IconArrowLeft size={18}/></Link>
             <div><div className="text-sm font-semibold tracking-wide">INDICA <span className="text-violet-200">ANIME US</span></div><div className="text-xs text-white/40">Local-first studio · Prototype dashboard</div></div>
           </div>
           <div className="flex items-center gap-2 text-xs"><span className="rounded-full border border-emerald-300/20 bg-emerald-300/[.06] px-3 py-1.5 text-emerald-200"><IconShieldLock size={13} className="mr-1 inline"/> Device storage</span><button onClick={()=>void createProject()} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 font-semibold text-black hover:bg-violet-100"><IconPlus size={15}/> New project</button></div>
         </header>
 
-        <div className="grid gap-5 py-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="space-y-4">
+        <div className="grid min-w-0 gap-4 py-4 sm:gap-5 sm:py-6 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className={`${mobileSidebarOpen?"block":"hidden"} min-w-0 space-y-4 lg:block`}>
             <section className="rounded-2xl border border-white/10 bg-white/[.025] p-3">
               <div className="mb-3 flex items-center justify-between px-1"><h2 className="text-xs font-semibold uppercase tracking-widest text-white/45">Your projects</h2><IconFolder size={15} className="text-white/40"/></div>
               {projects.length ? <div className="space-y-1">{projects.map(p=><div key={p.id} className={`group flex items-center gap-1 rounded-lg ${project?.id===p.id?"bg-violet-300/10":"hover:bg-white/[.04]"}`}><button onClick={()=>{setProject(p);setSelectedShot(p.shots[0]?.id??"");setNotice("Project opened from this device.")}} className="min-w-0 flex-1 px-2.5 py-2 text-left"><span className="block truncate text-xs font-medium">{p.name}</span><span className="mt-1 block text-[10px] text-white/35">{p.assets.length} pages · {p.shots.length} shots</span></button><button title="Delete project" onClick={()=>void removeProject(p.id)} className="mr-1 rounded p-1 text-white/25 opacity-0 hover:text-red-200 group-hover:opacity-100"><IconTrash size={13}/></button></div>)}</div>:<p className="px-2 py-3 text-xs leading-5 text-white/35">No saved projects yet. Create one to start.</p>}
@@ -597,7 +598,7 @@ export default function IndicaWorkspacePage() {
             </section>
           </aside>
 
-          <section className="min-w-0 space-y-5">
+          <section className="min-w-0 space-y-4 sm:space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><p className="text-[10px] font-semibold uppercase tracking-[.22em] text-violet-200/70">Studio dashboard / Prototype</p><h1 className="mt-1 text-2xl font-semibold sm:text-3xl">{project?.name??"Create a local project"}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-white/45">Import page images, review panel candidates, edit dialogue and timing, then render a local motion-comic. Project assets stay in this browser’s IndexedDB.</p></div>
               {project&&<div className="flex flex-wrap gap-2"><button onClick={()=>void exportProject()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/[.05] disabled:opacity-40"><IconDownload size={14}/> Full project backup</button><button onClick={()=>restoreInput.current?.click()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/[.05] disabled:opacity-40"><IconRefresh size={14}/> Restore project</button><input ref={restoreInput} type="file" accept=".indica.json,application/json" className="hidden" onChange={e=>void restoreProject(e.currentTarget.files?.[0]??null)}/><button onClick={exportAssets} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/[.05] disabled:opacity-40"><IconDownload size={14}/> Assets</button></div>}
@@ -615,7 +616,7 @@ export default function IndicaWorkspacePage() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-                <div className="flex gap-1 rounded-lg border border-white/10 bg-white/[.025] p-1">{(["assets","storyboard","dialogue","ai","export"] as const).map(tab=><button key={tab} onClick={()=>setActiveTab(tab)} className={`rounded-md px-3 py-2 text-xs capitalize ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
+                <div className="grid w-full grid-cols-3 gap-1 rounded-xl border border-white/10 bg-white/[.025] p-1 sm:flex sm:w-auto sm:flex-wrap">{(["assets","storyboard","dialogue","ai","export"] as const).map(tab=><button key={tab} onClick={()=>{setActiveTab(tab);setMobileSidebarOpen(false)}} className={`min-w-0 rounded-lg px-2 py-2.5 text-xs capitalize sm:px-3 sm:py-2 ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
                 <div className="flex flex-wrap gap-2"><button disabled={busy||!project.assets.length} onClick={()=>void rectifyAssets()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 disabled:opacity-40">Rectify pages</button><button disabled={busy||!project.assets.length} onClick={()=>void detectPanels()} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40"><IconRefresh size={14} className="mr-1 inline"/> Detect panels</button><button disabled={busy||!project.shots.length} onClick={()=>void runOcr()} className="rounded-lg border border-cyan-200/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-40">Run OCR</button></div>
               </div>
 
