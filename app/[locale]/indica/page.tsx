@@ -569,13 +569,13 @@ export default function IndicaWorkspacePage() {
       <div className="mx-auto w-full max-w-[1720px] px-3 py-3 sm:px-5 sm:py-5 lg:px-7">
         <header className="sticky top-0 z-30 -mx-3 mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#08090d]/95 px-3 py-3 backdrop-blur-xl sm:static sm:mx-0 sm:mb-0 sm:bg-transparent sm:px-0 sm:pb-4">
           <div className="flex items-center gap-3">
-            <button onClick={()=>setMobileSidebarOpen(v=>!v)} aria-expanded={mobileSidebarOpen} aria-label="Toggle project navigation" className="rounded-lg border border-white/10 p-2 text-white/65 hover:bg-white/[.06] lg:hidden"><IconFolder size={18}/></button>
             <Link href="/" aria-label="Back home" className="rounded-lg border border-white/10 p-2 text-white/60 hover:text-white"><IconArrowLeft size={18}/></Link>
             <div><div className="text-sm font-semibold tracking-wide">INDICA <span className="text-violet-200">ANIME US</span></div><div className="text-xs text-white/40">Local-first studio · Prototype dashboard</div></div>
           </div>
           <div className="flex items-center gap-2 text-xs"><span className="rounded-full border border-emerald-300/20 bg-emerald-300/[.06] px-3 py-1.5 text-emerald-200"><IconShieldLock size={13} className="mr-1 inline"/> Device storage</span><button onClick={()=>void createProject()} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 font-semibold text-black hover:bg-violet-100"><IconPlus size={15}/> New project</button></div>
         </header>
 
+        <div className="mb-3 flex flex-wrap items-center gap-2 lg:hidden"><button onClick={()=>setMobileSidebarOpen(v=>!v)} aria-expanded={mobileSidebarOpen} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70"><IconFolder size={14} className="mr-1 inline"/>{mobileSidebarOpen?"Hide navigation":"Project navigation"}</button><span className="min-w-0 flex-1 truncate text-[10px] text-white/35">{project?.name||"No active project"}</span></div>
         <div className="grid min-w-0 gap-4 py-4 sm:gap-5 sm:py-6 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]">
           <aside className={`${mobileSidebarOpen?"block":"hidden"} min-w-0 space-y-4 lg:block`}>
             <section className="rounded-2xl border border-white/10 bg-white/[.025] p-3">
@@ -615,7 +615,7 @@ export default function IndicaWorkspacePage() {
                 <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/webm,video/quicktime,.mov,.m4v" multiple className="hidden" onChange={e=>{void importFiles(e.currentTarget.files);e.currentTarget.value=""}}/>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex flex-col items-stretch justify-between gap-3 border-b border-white/10 pb-3 sm:flex-row sm:items-center">
                 <div className="grid w-full grid-cols-3 gap-1 rounded-xl border border-white/10 bg-white/[.025] p-1 sm:flex sm:w-auto sm:flex-wrap">{(["assets","storyboard","dialogue","ai","export"] as const).map(tab=><button key={tab} onClick={()=>{setActiveTab(tab);setMobileSidebarOpen(false)}} className={`min-w-0 rounded-lg px-2 py-2.5 text-xs capitalize sm:px-3 sm:py-2 ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
                 <div className="flex flex-wrap gap-2"><button disabled={busy||!project.assets.length} onClick={()=>void rectifyAssets()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 disabled:opacity-40">Rectify pages</button><button disabled={busy||!project.assets.length} onClick={()=>void detectPanels()} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40"><IconRefresh size={14} className="mr-1 inline"/> Detect panels</button><button disabled={busy||!project.shots.length} onClick={()=>void runOcr()} className="rounded-lg border border-cyan-200/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-40">Run OCR</button></div>
               </div>
@@ -626,7 +626,7 @@ export default function IndicaWorkspacePage() {
                 <div className="rounded-2xl border border-violet-200/15 bg-gradient-to-br from-violet-300/[.08] via-white/[.025] to-cyan-200/[.04] p-4 sm:p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-violet-200/70">Inference routing</p><h2 className="mt-1 text-lg font-semibold">Choose where your model runs</h2><p className="mt-1 text-xs leading-5 text-white/45">Hosted provider requests go through the app API. Local GGUF prompts go only to the local companion worker.</p></div><div className="grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/20 p-1"><button onClick={()=>setProviderMode("hosted")} className={`rounded-lg px-4 py-2.5 text-xs font-semibold ${providerMode==="hosted"?"bg-white text-black":"text-white/50"}`}>Hosted API</button><button onClick={()=>setProviderMode("local")} className={`rounded-lg px-4 py-2.5 text-xs font-semibold ${providerMode==="local"?"bg-violet-200 text-black":"text-white/50"}`}>Local GGUF</button></div></div>
                 </div>
-                <div className="grid gap-4 xl:grid-cols-[minmax(300px,.85fr)_minmax(0,1.15fr)]">
+                <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(300px,.85fr)_minmax(0,1.15fr)]">
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-5">
                   {providerMode==="hosted"?<><h2 className="text-lg font-semibold">Connect a vision-capable LLM</h2>
                   <p className="mt-2 text-sm leading-6 text-white/45">Use an OpenAI-compatible chat-completions endpoint that accepts image_url content. Works with compatible hosted endpoints and gateways; image generation additionally requires an OpenAI-compatible Images API.</p>
@@ -659,7 +659,7 @@ export default function IndicaWorkspacePage() {
                 </div>
                 </div>
               </div>}
-              {activeTab==="storyboard"&&<div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
+              {activeTab==="storyboard"&&<div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
                   <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Shot sequence</h2><span className="text-[10px] text-white/35">Select a shot to edit</span></div>
                   {project.shots.length?<div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{project.shots.map((shot,index)=>{const asset=project.assets.find(a=>a.id===shot.assetId);return <ShotCard key={shot.id} shot={shot} index={index} selected={activeShot?.id===shot.id} asset={asset} onSelect={()=>setSelectedShot(shot.id)} onMove={delta=>moveShot(shot.id,delta)} onRemove={()=>updateProject({shots:project.shots.filter(s=>s.id!==shot.id)})}/>})}</div>:<Empty text="Import page images to create the first shots."/>}
