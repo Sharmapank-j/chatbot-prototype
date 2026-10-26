@@ -85,6 +85,39 @@ class LocalWorkerHttpTests(unittest.TestCase):
             urllib.request.urlopen(request, timeout=5)
         self.assertEqual(caught.exception.code, 401)
 
+    def test_local_gguf_load_requires_worker_token(self):
+        request = urllib.request.Request(
+            self.base + "/llama/load",
+            data=json.dumps({"modelPath":"/tmp/fake.gguf"}).encode(),
+            headers={"Content-Type":"application/json"},
+            method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=5)
+        self.assertEqual(caught.exception.code, 401)
+
+    def test_local_gguf_load_rejects_non_gguf_path(self):
+        request = urllib.request.Request(
+            self.base + "/llama/load",
+            data=json.dumps({"modelPath":"/tmp/not-a-model.txt"}).encode(),
+            headers={"Content-Type":"application/json","Authorization":"Bearer test-token-not-for-production"},
+            method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=5)
+        self.assertEqual(caught.exception.code, 400)
+
+    def test_local_gguf_chat_requires_loaded_model(self):
+        request = urllib.request.Request(
+            self.base + "/llama/chat",
+            data=json.dumps({"prompt":"hello"}).encode(),
+            headers={"Content-Type":"application/json","Authorization":"Bearer test-token-not-for-production"},
+            method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=5)
+        self.assertEqual(caught.exception.code, 503)
+
     def test_end_to_end_mp4_audio_subtitle_bundle(self):
         payload = {
             "name": "Synthetic test",
