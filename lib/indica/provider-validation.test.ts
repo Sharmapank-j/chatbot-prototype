@@ -22,7 +22,7 @@ describe("parseImageDataUrl", () => {
     expect(parseImageDataUrl("data:image/png;base64,aGVsbG8=")).toEqual({
       mime: "image/png",
       base64: "aGVsbG8=",
-      size: 6
+      size: 5
     })
   })
 
