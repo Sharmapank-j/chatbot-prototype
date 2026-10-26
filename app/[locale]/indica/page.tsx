@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { IconArrowLeft, IconBook2, IconCheck, IconFileTypePdf, IconMovie, IconPhoto, IconRefresh, IconShieldLock, IconVolume } from "@tabler/icons-react"
 import Link from "next/link"
+import { classifyComicFile, MAX_COMIC_BATCH_BYTES, MAX_COMIC_FILES } from "@/lib/indica/file-validation"
 
 type ComicFile = { id: string; file: File; url: string; kind: "image" | "pdf" }
-
-const accepted = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"])
 
 export default function IndicaWorkspacePage() {
   const [files, setFiles] = useState<ComicFile[]>([])
@@ -29,29 +28,15 @@ export default function IndicaWorkspacePage() {
     const issues: string[] = []
     const currentKeys = new Set(files.map(item => `${item.file.name}:${item.file.size}:${item.file.lastModified}`))
     const candidates = Array.from(list)
-    const remainingSlots = Math.max(0, 30 - files.length)
-    if (candidates.length > remainingSlots) issues.push(`Only 30 source files are supported per project; ${remainingSlots} slot(s) remain.`)
+    const remainingSlots = Math.max(0, MAX_COMIC_FILES - files.length)
+    if (candidates.length > remainingSlots) issues.push("Only " + MAX_COMIC_FILES + " source files are supported per project; " + remainingSlots + " slot(s) remain.")
     for (const file of candidates.slice(0, remainingSlots)) {
-      const extension = file.name.toLowerCase().split(".").pop()
-      const kind = accepted.has(file.type)
-        ? file.type === "application/pdf" ? "pdf" : "image"
-        : !file.type && extension === "pdf"
-          ? "pdf"
-          : !file.type && ["jpg", "jpeg", "png", "webp"].includes(extension ?? "")
-            ? "image"
-            : null
-      if (!kind) {
-        issues.push(`${file.name}: unsupported file type. Choose JPG, PNG, WEBP or PDF.`)
+      const validation = classifyComicFile(file)
+      if (!validation.kind) {
+        issues.push(file.name + ": " + validation.error + ".")
         continue
       }
-      if (file.size === 0) {
-        issues.push(`${file.name}: file is empty.`)
-        continue
-      }
-      if (file.size > 100 * 1024 * 1024) {
-        issues.push(`${file.name}: maximum file size is 100 MB.`)
-        continue
-      }
+      const kind = validation.kind
       const key = `${file.name}:${file.size}:${file.lastModified}`
       if (currentKeys.has(key)) {
         issues.push(`${file.name}: duplicate selection skipped.`)
@@ -63,7 +48,7 @@ export default function IndicaWorkspacePage() {
       next.push({ id: crypto.randomUUID(), file, url, kind })
     }
     const newTotal = files.reduce((sum, item) => sum + item.file.size, 0) + next.reduce((sum, item) => sum + item.file.size, 0)
-    if (newTotal > 500 * 1024 * 1024) {
+    if (newTotal > MAX_COMIC_BATCH_BYTES) {
       next.forEach(item => { URL.revokeObjectURL(item.url); objectUrls.current.delete(item.url) })
       setNotice("Selection exceeds the 500 MB total project limit. Remove some files and try again.")
       return
