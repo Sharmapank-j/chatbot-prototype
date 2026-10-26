@@ -514,7 +514,6 @@ export default function IndicaWorkspacePage() {
 
   return (
     <main className="min-h-screen bg-[#08090d] text-white">
-      <canvas ref={previewCanvas} className="pointer-events-none fixed -left-[2000px] top-0" aria-hidden="true" />
       <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-7">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
