@@ -29,6 +29,8 @@ lib/indica/
     lipsync/              Optional lip-sync adapters
     llm/                  Local and cloud model adapters
   render/                 FFmpeg graph, audio mix, subtitle burn-in/mux
+scripts/indica_local_worker.py  Loopback FFmpeg/Piper worker; no media processing in Vercel functions
+agents/orchestrator.yaml        Declarative stage dependencies, approvals and failure policy
   storage/                Workspace files and metadata; no implicit cloud
 worker/                   Long tasks moved out of HTTP request lifecycle
 scripts/                  Windows bootstrap, preflight, render helpers
@@ -61,6 +63,7 @@ All model output is untrusted input. Validate JSON against schemas and keep prom
 7. **Anime visuals** — local generation adapter first if installed; cloud image-to-video adapter only after user enables provider, confirms estimated cost and accepts outbound media transfer. Generate key stills before motion where useful. Include retries, content-safe error states and provenance.
 8. **Voices** — assign voice presets per character; generate Hindi/English independently; allow user-recorded audio; no voice cloning by default. Voice cloning only with explicit, documented permission and suitable policy.
 9. **Lip-sync (optional)** — separate from TTS and video generation. Must be selectable per shot and not a hard dependency for export.
+10. **Local media worker** — binds to 127.0.0.1, requires a per-run bearer token, runs FFmpeg and optional Piper locally, and exports a ZIP containing MP4, synchronized WAV, SRT and render manifest. Vercel hosts the UI only.
 10. **Render** — create shot clips, normalize dimensions/FPS/audio sample rate, concatenate or transition, mix dialogue/music/SFX, generate soft/burned subtitles, mux MP4, export SRT/VTT and render manifest.
 11. **Quality checks** — missing frame/audio, subtitle clipping, silence, loudness peak, shot duration, missing assets, broken character refs, watermarks/unsupported output formats.
 12. **Export** — H.264 MP4 + AAC baseline, 16:9 and 9:16 profiles, 24/30 FPS presets, SRT/VTT, editable project manifest.
