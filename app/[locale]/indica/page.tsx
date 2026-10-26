@@ -33,12 +33,14 @@ export default function IndicaWorkspacePage() {
     if (candidates.length > remainingSlots) issues.push(`Only 30 source files are supported per project; ${remainingSlots} slot(s) remain.`)
     for (const file of candidates.slice(0, remainingSlots)) {
       const extension = file.name.toLowerCase().split(".").pop()
-      const kind = file.type === "application/pdf" || extension === "pdf"
-        ? "pdf"
-        : file.type.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(extension ?? "")
-          ? "image"
-          : null
-      if (!kind || (kind === "pdf" && file.type && file.type !== "application/pdf") || (kind === "image" && file.type && !file.type.startsWith("image/"))) {
+      const kind = accepted.has(file.type)
+        ? file.type === "application/pdf" ? "pdf" : "image"
+        : !file.type && extension === "pdf"
+          ? "pdf"
+          : !file.type && ["jpg", "jpeg", "png", "webp"].includes(extension ?? "")
+            ? "image"
+            : null
+      if (!kind) {
         issues.push(`${file.name}: unsupported file type. Choose JPG, PNG, WEBP or PDF.`)
         continue
       }
