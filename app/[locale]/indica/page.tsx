@@ -19,6 +19,7 @@ type Shot = {
   start: number
   duration: number
   zoom: number
+  crop?: { x: number; y: number; w: number; h: number }
 }
 type Asset = { id: string; name: string; type: string; size: number; blob: Blob }
 type Project = {
@@ -262,7 +263,7 @@ export default function IndicaWorkspacePage() {
           panels.forEach((panel, index) => candidates.push({
             id: newId(), assetId: asset.id, title: `Panel ${index+1} · ${asset.name}`,
             dialogue: old[index]?.dialogue ?? "", speaker: old[index]?.speaker ?? "",
-            start: baseStart + each*index, duration: each, zoom: 1.04,
+            start: baseStart + each*index, duration: each, zoom: 1.04, crop: panel,
           }))
         } else {
           candidates.push(...(old.length ? old : [{id:newId(),assetId:asset.id,title:asset.name,dialogue:"",speaker:"",start:candidates.length*3,duration:3,zoom:1.05}]))
@@ -322,8 +323,8 @@ export default function IndicaWorkspacePage() {
     const mimeType = supportsMp4 ? "video/mp4" : "video/webm"
     if (typeof MediaRecorder === "undefined" || !canvas.captureStream) { setNotice("This browser does not support local video recording."); return }
     setBusy(true); setRenderProgress(0)
-    const width = project.aspect === "9:16" ? 720 : 1280
-    const height = project.aspect === "9:16" ? 1280 : 720
+    const width = project.aspect === "9:16" ? 720 : project.aspect === "1:1" ? 900 : 1280
+    const height = project.aspect === "9:16" ? 1280 : project.aspect === "1:1" ? 900 : 720
     canvas.width = width; canvas.height = height
     const stream = canvas.captureStream(24)
     let recorder: MediaRecorder
@@ -353,9 +354,12 @@ export default function IndicaWorkspacePage() {
           const p = frame/frames
           const zoom = 1 + (shot.zoom-1)*p
           ctx.fillStyle="#08090d"; ctx.fillRect(0,0,width,height)
-          const fit = Math.min(width/image.naturalWidth,height/image.naturalHeight)
-          const w=image.naturalWidth*fit*zoom, h=image.naturalHeight*fit*zoom
-          ctx.drawImage(image,(width-w)/2,(height-h)/2,w,h)
+          const crop = shot.crop ?? {x:0,y:0,w:1,h:1}
+          const sx = crop.x * image.naturalWidth, sy = crop.y * image.naturalHeight
+          const sw = crop.w * image.naturalWidth, sh = crop.h * image.naturalHeight
+          const fit = Math.min(width/sw,height/sh)
+          const w=sw*fit*zoom, h=sh*fit*zoom
+          ctx.drawImage(image,sx,sy,sw,sh,(width-w)/2,(height-h)/2,w,h)
           if (shot.dialogue.trim()) {
             const boxH=Math.round(height*.16), margin=Math.round(width*.045)
             ctx.fillStyle="rgba(0,0,0,.76)"; ctx.fillRect(margin,height-boxH-margin,width-margin*2,boxH)
