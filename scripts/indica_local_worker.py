@@ -214,6 +214,7 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def do_POST(self) -> None:
+        global LLAMA_PROCESS, LLAMA_MODEL_NAME
         path = urlparse(self.path).path
         if path == "/llama/load":
             if not self._require_token():
@@ -233,7 +234,6 @@ class Handler(BaseHTTPRequestHandler):
                 wait_seconds = max(5, min(1800, int(data.get("waitSeconds", 90))))
                 context = max(512, min(16384, int(data.get("contextTokens", 4096))))
                 gpu_layers = max(-1, min(999, int(data.get("gpuLayers", -1))))
-                global LLAMA_PROCESS, LLAMA_MODEL_NAME
                 with LLAMA_LOCK:
                     if LLAMA_PROCESS and LLAMA_PROCESS.poll() is None:
                         LLAMA_PROCESS.terminate()
@@ -267,7 +267,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/llama/unload":
             if not self._require_token():
                 return
-            global LLAMA_PROCESS, LLAMA_MODEL_NAME
             with LLAMA_LOCK:
                 if LLAMA_PROCESS and LLAMA_PROCESS.poll() is None:
                     LLAMA_PROCESS.terminate()
