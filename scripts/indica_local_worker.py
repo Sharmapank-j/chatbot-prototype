@@ -75,6 +75,16 @@ def run(command: list[str], timeout: int = 300) -> None:
         raise RuntimeError(message)
 
 
+def media_duration(path: Path) -> float:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        capture_output=True, text=True, timeout=30, check=False
+    )
+    if result.returncode:
+        raise RuntimeError((result.stderr or "Could not inspect local TTS audio duration")[-2000:])
+    return max(0.0, float(result.stdout.strip()))
+
+
 def make_tts(text: str, target: Path, scratch: Path) -> bool:
     if not text.strip() or not PIPER_MODEL or not command_available(PIPER):
         return False
@@ -188,24 +198,30 @@ class Handler(BaseHTTPRequestHandler):
                 subtitles: list[str] = []
                 cursor = 0.0
                 total_frames = 0
+                tts_used = False
                 for index, shot in enumerate(shots):
                     if not isinstance(shot, dict):
                         raise ValueError("Invalid shot entry.")
                     duration = seconds(shot.get("duration"))
+                    image = decode_image(str(shot.get("imageDataUrl", "")), root / f"source-{index:03}")
+                    text = str(shot.get("dialogue", "")).strip()
+                    voice = root / f"voice-{index:03}.wav"
+                    has_voice = make_tts(text, voice, root)
+                    tts_used = tts_used or has_voice
+                    # Extend the shot slot when speech is longer so generated dialogue is not truncated.
+                    if has_voice:
+                        duration = max(duration, media_duration(voice) + 0.15)
+                    if duration > 120:
+                        raise ValueError("A shot cannot exceed 120 seconds after voice synchronization.")
                     frames = max(6, round(duration * FPS))
                     duration = frames / FPS
-                    image = decode_image(str(shot.get("imageDataUrl", "")), root / f"source-{index:03}")
-                    # FFmpeg's frame-count-based zoompan is repeatable for a given input and settings.
                     clip = root / f"clip-{index:03}.mp4"
                     zoom = float(shot.get("zoom", 1.04))
                     zoom = min(1.3, max(1.0, zoom))
                     vf = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},zoompan=z='min(zoom+{(zoom-1)/max(1,frames):.8f},{zoom:.4f})':d={frames}:s={width}x{height}:fps={FPS},format=yuv420p"
                     run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(image), "-vf", vf, "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS), str(clip)], timeout=180)
                     clips.append(clip)
-                    text = str(shot.get("dialogue", "")).strip()
-                    voice = root / f"voice-{index:03}.wav"
-                    if make_tts(text, voice, root):
-                        # Fit each spoken line to its shot slot; no dialogue produces silence.
+                    if has_voice:
                         fitted = root / f"audio-fit-{index:03}.wav"
                         run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(voice), "-af", f"apad=pad_dur={duration},atrim=duration={duration}", "-ar", "24000", "-ac", "1", str(fitted)])
                         audio_files.append(fitted)
@@ -236,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
                     mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
                 mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
                 run(mux)
-                manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "audio": "Piper local TTS where configured; otherwise silence", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
+                manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
                 manifest_file = root / "render-manifest.json"
                 manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
                 bundle = io.BytesIO()
