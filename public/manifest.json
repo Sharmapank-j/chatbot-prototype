@@ -1,26 +1,14 @@
 {
-  "short_name": "Chatbot UI",
-  "name": "Chatbot UI",
+  "short_name": "Indica",
+  "name": "Indica Anime Us — Comic to Anime Studio",
+  "description": "Local-first comic adaptation, storyboarding and anime video workspace.",
   "icons": [
-    {
-      "src": "/icon-192x192.png",
-      "type": "image/ico",
-      "sizes": "192x192"
-    },
-    {
-      "src": "/icon-256x256.png",
-      "type": "image/png",
-      "sizes": "256x256"
-    },
-    {
-      "src": "/icon-512x512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose":"maskable"
-    }
+    { "src": "/icon-192x192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/icon-256x256.png", "type": "image/png", "sizes": "256x256" },
+    { "src": "/icon-512x512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
   ],
-  "start_url": "/",
+  "start_url": "/en",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#000000"
+  "theme_color": "#08090d",
+  "background_color": "#08090d"
 }
