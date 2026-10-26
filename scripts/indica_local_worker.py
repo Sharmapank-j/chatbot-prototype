@@ -298,7 +298,8 @@ def main() -> None:
         raise SystemExit(f"FFprobe not found: {FFPROBE}. Install FFmpeg (including FFprobe) and add it to PATH.")
     print(f"Indica local worker listening at http://{HOST}:{PORT}", flush=True)
     print(f"FFmpeg: {FFMPEG}", flush=True)
-    print(f"Piper TTS: {'configured' if command_available(PIPER) and PIPER_MODEL and Path(PIPER_MODEL).is_file() else 'not configured (video exports silence)' }", flush=True)
+    piper_models = [model for model in (PIPER_MODEL, PIPER_MODEL_HI, PIPER_MODEL_EN) if model and Path(model).is_file()]
+    print(f"Piper TTS: {'configured (' + str(len(piper_models)) + ' voice model(s))' if command_available(PIPER) and piper_models else 'not configured (video exports silence)' }", flush=True)
     print(f"Worker token (paste into Studio > Export): {TOKEN}", flush=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     try:
