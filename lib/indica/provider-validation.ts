@@ -27,7 +27,7 @@ export function isPrivateAddress(address: string): boolean {
 export function validateProviderUrl(value: string): URL | null {
   try {
     const url = new URL(value)
-    if (url.protocol !== "https:" || url.username || url.password) return null
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null
     const host = url.hostname.toLowerCase()
     if (isIP(host) !== 0 || host === "localhost" || host.endsWith(".localhost") ||
         host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".test") ||
