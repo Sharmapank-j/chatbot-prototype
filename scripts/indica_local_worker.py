@@ -44,7 +44,7 @@ def decode_image(data_url: str, destination: Path) -> Path:
     match = ALLOWED_IMAGE.fullmatch(data_url)
     if not match:
         raise ValueError("Each shot needs a base64 PNG, JPEG or WEBP source image.")
-    raw = base64.b64decode(match.group(2).replace("\\r", "").replace("\\n", ""), validate=True)
+    raw = base64.b64decode(match.group(2).replace("\r", "").replace("\n", ""), validate=True)
     if not raw or len(raw) > 8 * 1024 * 1024:
         raise ValueError("Each rendered image must be no larger than 8 MB.")
     suffix = {"png": ".png", "jpeg": ".jpg", "webp": ".webp"}[match.group(1)]
