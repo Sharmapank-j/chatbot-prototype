@@ -30,9 +30,9 @@ You are working on Indica Anime Us. Follow this document when using Claude Code,
 - OCR/dialogue editable; speaker assignment correctable.
 - Hindi Devanagari and English tracks handled independently.
 - SRT/VTT round-trips preserve timing.
-- Motion-comic MP4 can render without cloud APIs or AI weights.
+- Motion-comic MP4 can render without cloud APIs or AI weights. The local companion worker uses FFmpeg for deterministic H.264 MP4 and exports a WAV voice track, SRT and manifest; Piper is required for speech, otherwise the audio is silence.
 - Strict offline mode blocks non-loopback providers.
-- Tests cover invalid files, path traversal, malformed subtitles, pipeline retries and missing binaries.
+- Tests cover invalid files, corrupt project bundles, provider private-network DNS targets, local worker utility contracts, malformed subtitles, pipeline retries and missing binaries.
 
 ## Coding style
 Use typed domain schemas and narrow modules. Avoid unneeded dependency upgrades. Keep secrets out of browser bundles. Add licences for new dependencies and model weights. Keep fixtures synthetic or licensed.
