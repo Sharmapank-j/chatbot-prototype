@@ -46,3 +46,9 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Production build
         run: npm run build
+      - name: Install temporary browser test runner
+        run: npm install --no-save --package-lock=false @playwright/test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser end-to-end workflow
+        run: npx playwright test
