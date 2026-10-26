@@ -159,6 +159,9 @@ export default function IndicaWorkspacePage() {
   const [providerResult, setProviderResult] = useState("")
   const [providerImage, setProviderImage] = useState("")
   const [providerBusy, setProviderBusy] = useState(false)
+  const [localWorkerUrl, setLocalWorkerUrl] = useState("http://127.0.0.1:8765")
+  const [localWorkerToken, setLocalWorkerToken] = useState("")
+  const [localWorkerStatus, setLocalWorkerStatus] = useState("Not checked")
   const fileInput = useRef<HTMLInputElement>(null)
   const restoreInput = useRef<HTMLInputElement>(null)
   const previewCanvas = useRef<HTMLCanvasElement>(null)
@@ -474,81 +477,54 @@ export default function IndicaWorkspacePage() {
     const result=await callAiProvider("generate-image",prompt)
     if(result)setNotice("Image-generation request completed. Provider support depends on its OpenAI-compatible Images API.")
   }
-  async function renderVideo() {
-    if (!project || !project.shots.length || !previewCanvas.current) { setNotice("Import at least one image to render a video."); return }
-    const canvas = previewCanvas.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) { setNotice("Canvas rendering is not available."); return }
-    const supportsMp4 = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/mp4")
-    const mimeType = supportsMp4 ? "video/mp4" : "video/webm"
-    if (typeof MediaRecorder === "undefined" || !canvas.captureStream) { setNotice("This browser does not support local video recording."); return }
-    setBusy(true); setRenderProgress(0)
-    const width = project.aspect === "9:16" ? 720 : project.aspect === "1:1" ? 900 : 1280
-    const height = project.aspect === "9:16" ? 1280 : project.aspect === "1:1" ? 900 : 720
-    canvas.width = width; canvas.height = height
-    const stream = canvas.captureStream(24)
-    let recorder: MediaRecorder
-    try { recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 }) }
-    catch { recorder = new MediaRecorder(stream) }
-    const chunks: BlobPart[] = []
-    const done = new Promise<Blob>((resolve, reject) => {
-      recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
-      recorder.onerror = () => reject(new Error("Browser video encoder failed"))
-      recorder.onstop = () => resolve(new Blob(chunks, {type:recorder.mimeType || mimeType}))
-    })
-    recorder.start(250)
-    const loadImage = async (asset: Asset) => {
-      const url = URL.createObjectURL(asset.blob)
-      const image = new Image(); image.src = url
-      await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(new Error("Unable to load image"))})
-      return {image,url}
-    }
+  function validateLocalWorkerUrl(value:string):string {
+    const url=new URL(value)
+    if(url.protocol!=="http:"||!["127.0.0.1","localhost","[::1]"].includes(url.hostname))throw new Error("For security, the media worker must be an HTTP loopback URL such as http://127.0.0.1:8765.")
+    return url.origin
+  }
+  async function checkLocalWorker() {
     try {
-      for (let i=0;i<project.shots.length;i++) {
-        const shot = project.shots[i]
-        const asset = project.assets.find(a=>a.id===shot.assetId)
-        if (!asset) continue
-        const {image,url} = await loadImage(asset)
-        const frames = Math.max(12, Math.round(shot.duration*24))
-        for (let frame=0;frame<frames;frame++) {
-          const p = frame/frames
-          const zoom = 1 + (shot.zoom-1)*p
-          ctx.fillStyle="#08090d"; ctx.fillRect(0,0,width,height)
-          const crop = shot.crop ?? {x:0,y:0,w:1,h:1}
-          const sx = crop.x * image.naturalWidth, sy = crop.y * image.naturalHeight
-          const sw = crop.w * image.naturalWidth, sh = crop.h * image.naturalHeight
-          const fit = Math.min(width/sw,height/sh)
-          const w=sw*fit*zoom, h=sh*fit*zoom
-          ctx.drawImage(image,sx,sy,sw,sh,(width-w)/2,(height-h)/2,w,h)
-          if (shot.dialogue.trim()) {
-            const boxH=Math.round(height*.16), margin=Math.round(width*.045)
-            ctx.fillStyle="rgba(0,0,0,.76)"; ctx.fillRect(margin,height-boxH-margin,width-margin*2,boxH)
-            ctx.fillStyle="#ffffff"; ctx.textAlign="center"; ctx.textBaseline="middle"
-            ctx.font=`600 ${Math.max(20,Math.round(width*.025))}px system-ui, sans-serif`
-            const words=shot.dialogue.split(/\s+/); const lines:string[]=[]; let line=""
-            for(const word of words){const test=line?line+" "+word:word;if(ctx.measureText(test).width>width-margin*4&&line){lines.push(line);line=word}else line=test}
-            if(line)lines.push(line)
-            const shown=lines.slice(0,2), lineH=Math.round(height*.04), centerY=height-boxH/2-margin/2
-            shown.forEach((text,j)=>ctx!.fillText(text,width/2,centerY+(j-(shown.length-1)/2)*lineH,width-margin*4))
-          }
-          if (frame % 6 === 0) setRenderProgress(Math.round((i+(frame/frames))/project.shots.length*100))
-          await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()))
-        }
-        URL.revokeObjectURL(url)
+      const base=validateLocalWorkerUrl(localWorkerUrl)
+      const response=await fetch(base+"/health",{cache:"no-store"})
+      if(!response.ok)throw new Error("Local worker health check failed.")
+      const health=await response.json() as {service?:string;ffmpeg?:boolean;piper?:boolean}
+      if(health.service!=="indica-local-worker")throw new Error("This endpoint is not an Indica local worker.")
+      setLocalWorkerStatus(`FFmpeg ${health.ffmpeg?"ready":"missing"} · Piper TTS ${health.piper?"ready":"not configured"}`)
+      setNotice(health.piper?"Local FFmpeg and Piper TTS are ready.":"FFmpeg is reachable. Configure Piper and INDICA_PIPER_MODEL to export speech; otherwise the audio track will contain silence.")
+    }catch(error){setLocalWorkerStatus("Unavailable");setNotice(error instanceof Error?error.message:"Could not connect to the local media worker. Start scripts/indica_local_worker.py on this computer.")}
+  }
+  async function renderVideo() {
+    if(!project||!project.shots.length){setNotice("Import pages and create at least one storyboard shot before rendering.");return}
+    if(!localWorkerToken.trim()){setNotice("Enter the local worker token printed by scripts/indica_local_worker.py.");return}
+    if(project.shots.length>30){setNotice("The local renderer currently accepts up to 30 shots per render. Split this episode into smaller scenes.");return}
+    setBusy(true);setRenderProgress(0)
+    try{
+      const base=validateLocalWorkerUrl(localWorkerUrl)
+      const shots=[]
+      for(let i=0;i<project.shots.length;i++){
+        const shot=project.shots[i]
+        const asset=project.assets.find(a=>a.id===shot.assetId)
+        if(!asset)throw new Error(`Missing source asset for shot: ${shot.title}`)
+        setNotice(`Preparing source ${i+1}/${project.shots.length}: ${shot.title}`)
+        const region=shot.crop?await cropRegion(asset.blob,shot.crop):asset.blob
+        const imageDataUrl=await prepareProviderImage(region)
+        shots.push({title:shot.title,dialogue:shot.dialogue,speaker:shot.speaker,duration:shot.duration,zoom:shot.zoom,imageDataUrl})
+        setRenderProgress(Math.round((i+1)/project.shots.length*25))
       }
-      await new Promise(resolve=>window.setTimeout(resolve,200))
-      recorder.stop()
-      const blob=await done
-      const ext=blob.type.includes("mp4")?"mp4":"webm"
-      downloadBlob(blob,`${safeName(project.name)}.${ext}`)
-      setNotice(`Rendered ${Math.round(blob.size/1024/1024*10)/10} MB ${ext.toUpperCase()} motion-comic. ${ext==="webm"?"This browser did not expose MP4 recording; use FFmpeg to convert WebM to MP4.":""}`)
-    } catch(error) {
-      if (recorder.state!=="inactive") recorder.stop()
-      setNotice(error instanceof Error?error.message:"Video rendering failed.")
-    } finally {
-      stream.getTracks().forEach(track=>track.stop())
-      setBusy(false);setRenderProgress(100)
-    }
+      setNotice("Rendering deterministic H.264 MP4, synchronized voice track and subtitles with local FFmpeg…")
+      const response=await fetch(base+"/render",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${localWorkerToken.trim()}`},body:JSON.stringify({name:project.name,aspect:project.aspect,language:project.language,shots}),cache:"no-store"})
+      if(!response.ok){
+        let message=`Local render failed (HTTP ${response.status}).`
+        try{const data=await response.json() as {error?:string};if(data.error)message=data.error}catch{}
+        throw new Error(message)
+      }
+      const bundle=await response.blob()
+      if(!bundle.size||bundle.type!=="application/zip")throw new Error("Local worker returned an invalid render bundle.")
+      setRenderProgress(100)
+      downloadBlob(bundle,`${safeName(project.name)}-render-bundle.zip`)
+      setNotice(`Rendered ${(bundle.size/1024/1024).toFixed(1)} MB bundle: episode.mp4, voice-track.wav, subtitles.srt and render manifest. Check the bundle's manifest for whether Piper TTS was configured.`)
+    }catch(error){setNotice(error instanceof Error?error.message:"FFmpeg render failed. Check local worker logs and FFmpeg/Piper installation.")}
+    finally{setBusy(false)}
   }
   function safeName(name:string) { return name.trim().replace(/[^a-z0-9-_]+/gi,"-").replace(/^-|-$/g,"").slice(0,60)||"indica-project" }
 
@@ -582,7 +558,7 @@ export default function IndicaWorkspacePage() {
             </section>
             <section className="rounded-2xl border border-white/10 bg-white/[.025] p-3">
               <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-widest text-white/45">Engine status</h2>
-              <div className="space-y-2 text-xs"><Status label="Local project storage" state="Ready"/><Status label="Panel detection" state="OpenCV contours"/><Status label="OCR" state="Tesseract.js"/><Status label="System voice preview" state={typeof window!=="undefined"&&"speechSynthesis" in window?"Available":"Browser dependent"}/><Status label="AI provider" state="Configure in AI tab"/><Status label="Video render" state="Browser encoder"/></div>
+              <div className="space-y-2 text-xs"><Status label="Local project storage" state="Ready"/><Status label="Panel detection" state="OpenCV contours"/><Status label="OCR" state="Tesseract.js"/><Status label="System voice preview" state={typeof window!=="undefined"&&"speechSynthesis" in window?"Available":"Browser dependent"}/><Status label="AI provider" state="Configure in AI tab"/><Status label="Video render" state="Local FFmpeg worker"/></div>
             </section>
           </aside>
 
@@ -644,7 +620,7 @@ export default function IndicaWorkspacePage() {
 
               {activeTab==="dialogue"&&<div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Dialogue & subtitles</h2><button onClick={exportSrt} disabled={!project.shots.length} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40"><IconDownload size={14} className="mr-1 inline"/> Export SRT</button></div>{project.shots.length?<div className="space-y-3">{project.shots.map((shot,index)=><div key={shot.id} className="grid gap-3 rounded-xl border border-white/10 p-3 md:grid-cols-[100px_1fr_1fr]"><div><div className="text-xs font-medium">Shot {index+1}</div><div className="mt-1 text-[10px] text-white/35">{fmt(shot.start)} → {fmt(shot.start+shot.duration)}</div></div><label className="text-[10px] text-white/40">Speaker<input value={shot.speaker} onChange={e=>updateShot(shot.id,{speaker:e.target.value})} placeholder="Speaker name" className="mt-1 block w-full rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs text-white outline-none"/></label><label className="text-[10px] text-white/40">Dialogue / subtitle<textarea value={shot.dialogue} onChange={e=>updateShot(shot.id,{dialogue:e.target.value})} rows={2} placeholder="Enter dialogue manually or use Run OCR / AI vision." className="mt-1 block w-full resize-y rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs text-white outline-none focus:border-violet-200/40"/></label></div>)}</div>:<Empty text="Add source pages to start dialogue editing."/>}</div>}
 
-              {activeTab==="export"&&<div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconMovie size={22} className="text-violet-200"/><h2 className="mt-3 text-lg font-semibold">Motion-comic render</h2><p className="mt-2 text-sm leading-6 text-white/45">Builds a video locally from your shot sequence with gentle zoom, timed dialogue overlays and your selected aspect ratio. It does not call an AI provider.</p><div className="mt-5 flex flex-wrap gap-2"><button disabled={busy||!project.shots.length} onClick={()=>void renderVideo()} className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40"><IconPlayerPlay size={16} className="mr-1 inline"/>{busy?"Rendering…":"Render video"}</button><button onClick={exportSrt} disabled={!project.shots.length} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm text-white/70 disabled:opacity-40">Export SRT</button></div>{busy&&<div className="mt-4"><div className="mb-1 flex justify-between text-xs text-white/40"><span>Rendering frames</span><span>{renderProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-violet-300 transition-all" style={{width:`${renderProgress}%`}}/></div></div>}</div><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconSettings size={22} className="text-cyan-200"/><h2 className="mt-3 text-lg font-semibold">Export & portability</h2><p className="mt-2 text-sm leading-6 text-white/45">Export the editable project manifest, download original assets, or create an SRT subtitle file. Browser support decides whether the video recorder produces MP4 or WebM.</p><div className="mt-5 flex flex-wrap gap-2"><button onClick={exportProject} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Project JSON</button><button onClick={exportAssets} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Download assets</button><button onClick={exportSrt} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Subtitles SRT</button></div><div className="mt-4 rounded-lg border border-amber-200/15 bg-amber-200/[.04] p-3 text-xs leading-5 text-amber-100/65">This public prototype stores files in the current browser only. Do not use private or sensitive source material on a shared computer. Vision providers are optional and configured per session. Neural TTS and deterministic FFmpeg export are still separate integration work.</div></div></div>}
+              {activeTab==="export"&&<div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconMovie size={22} className="text-violet-200"/><h2 className="mt-3 text-lg font-semibold">Local FFmpeg + TTS render</h2><p className="mt-2 text-sm leading-6 text-white/45">The companion service on this computer renders frame-count-based H.264 MP4 at 24 fps, generates a synchronized voice track with Piper when configured, and exports subtitles and a manifest in one ZIP. No browser MediaRecorder fallback is used.</p><div className="mt-4 space-y-3"><label className="block text-xs text-white/55">Local worker URL<input value={localWorkerUrl} onChange={e=>setLocalWorkerUrl(e.target.value)} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"/></label><label className="block text-xs text-white/55">Worker token (session only)<input type="password" autoComplete="off" value={localWorkerToken} onChange={e=>setLocalWorkerToken(e.target.value)} placeholder="Paste token printed by local worker" className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"/></label><div className="flex flex-wrap items-center gap-2"><button disabled={busy} onClick={()=>void checkLocalWorker()} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">Check local worker</button><span className="text-xs text-white/45">{localWorkerStatus}</span></div><button disabled={busy||!project.shots.length||!localWorkerToken.trim()} onClick={()=>void renderVideo()} className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40"><IconPlayerPlay size={16} className="mr-1 inline"/>{busy?"Rendering…":"Render MP4 + audio bundle"}</button><button onClick={exportSrt} disabled={!project.shots.length} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm text-white/70 disabled:opacity-40">Export SRT separately</button></div>{busy&&<div className="mt-4"><div className="mb-1 flex justify-between text-xs text-white/40"><span>Preparing assets / rendering</span><span>{renderProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-violet-300 transition-all" style={{width:`${renderProgress}%`}}/></div></div>}<div className="mt-4 rounded-lg border border-amber-200/15 bg-amber-200/[.04] p-3 text-xs leading-5 text-amber-100/65">Start the local worker with <code>python scripts/indica_local_worker.py</code>. Configure FFmpeg and a Piper ONNX voice model for speech; if Piper is not configured, the exported audio track is silence. The token is not saved in the project.</div></div><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconSettings size={22} className="text-cyan-200"/><h2 className="mt-3 text-lg font-semibold">Export & portability</h2><p className="mt-2 text-sm leading-6 text-white/45">Back up and restore the editable project, export original assets and SRT, or download the local render bundle containing the MP4, synchronized WAV voice track, subtitle file and render manifest.</p><div className="mt-5 flex flex-wrap gap-2"><button onClick={()=>void exportProject()} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Full project backup</button><button onClick={exportAssets} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Download assets</button><button onClick={exportSrt} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Subtitles SRT</button></div><div className="mt-4 rounded-lg border border-white/10 p-3 text-xs leading-5 text-white/45">The hosted app cannot install FFmpeg or voice models on your device. The companion worker binds to loopback, requires a per-run token, and accepts requests only from local development or Vercel origins.</div></div></div>}
             </>}
           </section>
         </div>
