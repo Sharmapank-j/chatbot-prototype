@@ -70,7 +70,7 @@ export default function HomePage() {
                   <div className="rounded-xl border border-white/10 bg-white/[.035] p-3">
                     <div className="text-[10px] uppercase tracking-widest text-white/35">Dialogue</div>
                     <div className="mt-2 rounded-lg bg-black/20 p-2 text-xs text-white/70">“अब समय आ गया है।”</div>
-                    <div className="mt-1 rounded-lg bg-black/20 p-2 text-xs text-white/70">“It's time to move.”</div>
+                    <div className="mt-1 rounded-lg bg-black/20 p-2 text-xs text-white/70">“It&apos;s time to move.”</div>
                   </div>
                 </div>
                 <div className="flex min-h-[310px] flex-col rounded-xl border border-violet-200/15 bg-gradient-to-br from-[#2b1b45] via-[#151928] to-[#0e353c] p-3">
