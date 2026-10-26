@@ -24,14 +24,14 @@ function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, "")
 }
 
-async function readProviderError(response: Response) {
+async function readProviderError(response: Response, secret: string) {
   const raw = await response.text()
   try {
     const parsed = JSON.parse(raw) as { error?: { message?: string } | string }
     const detail = typeof parsed.error === "string" ? parsed.error : parsed.error?.message
-    return detail?.slice(0, 500) || `Provider returned HTTP ${response.status}`
+    return (detail?.replaceAll(secret, "[redacted]").slice(0, 500)) || `Provider returned HTTP ${response.status}`
   } catch {
-    return `Provider returned HTTP ${response.status}: ${raw.slice(0, 250)}`
+    return `Provider returned HTTP ${response.status}: ${raw.replaceAll(secret, "[redacted]").slice(0, 250)}`
   }
 }
 
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
         cache: "no-store",
         redirect: "error"
       })
-      if (!response.ok) return jsonError(await readProviderError(response), 502)
+      if (!response.ok) return jsonError(await readProviderError(response, apiKey), 502)
       const result = await response.json() as { data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }> }
       const image = result.data?.[0]
       if (image?.b64_json) {
