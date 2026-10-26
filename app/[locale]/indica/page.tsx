@@ -354,7 +354,7 @@ export default function IndicaWorkspacePage() {
     if(!file)return
     setBusy(true)
     try {
-      if(file.size>520*1024*1024)throw new Error("Project bundle exceeds the 520 MB import limit.")
+      if(file.size>700*1024*1024)throw new Error("Project bundle exceeds the 700 MB import limit.")
       const restored=parseProjectBundle(await file.text(),file.name) as Project
       await saveProject(restored)
       setProjects(current=>[restored,...current.filter(p=>p.id!==restored.id)])
