@@ -26,6 +26,7 @@ Show-CommandStatus "Git" "git"
 Show-CommandStatus "FFmpeg" "ffmpeg" "-version"
 Show-CommandStatus "FFprobe" "ffprobe" "-version"
 Show-CommandStatus "Tesseract OCR" "tesseract" "--version"
+Show-CommandStatus "Piper TTS" "piper" "--help"
 
 if (-not (Test-Path ".env.local")) {
   if (Test-Path ".env.indica.example") {
@@ -62,5 +63,9 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 
 Write-Host ""
 Write-Host "Preflight complete." -ForegroundColor Cyan
-Write-Host "Local comic parsing, OCR, TTS, GPU generation, and MP4 export require their respective implementation/tools; this script does not claim those stages are connected."
-Write-Host "Next: read docs/OFFLINE_MODE.md and docs/ROADMAP.md."
+Write-Host "Local FFmpeg rendering is provided by scripts/indica_local_worker.py; Piper speech requires a user-installed Piper executable and ONNX voice model."
+Write-Host "Start the web UI with: npm ci; npm run dev"
+Write-Host "Start the local renderer in a second terminal with: python scripts/indica_local_worker.py"
+Write-Host "The renderer prints a random token. Paste it in the Studio Export tab. Keep the worker bound to loopback."
+Write-Host "Set INDICA_PIPER_MODEL to your licensed .onnx voice model path before starting the worker."
+Write-Host "Next: read docs/PROTOTYPE_GUIDE.md and docs/AGENT_ORCHESTRATION.md."
