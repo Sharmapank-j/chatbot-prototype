@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -31,6 +32,7 @@ PIPER_MODEL = os.environ.get("INDICA_PIPER_MODEL", "").strip()
 MAX_BODY = 180 * 1024 * 1024
 MAX_SHOTS = 30
 FPS = 24
+RENDER_LOCK = threading.Lock()
 ALLOWED_IMAGE = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=\r\n]+)$")
 
 
@@ -164,6 +166,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {
             "service": "indica-local-worker",
             "ffmpeg": command_available(FFMPEG),
+            "ffprobe": command_available(FFPROBE),
             "piper": command_available(PIPER) and bool(PIPER_MODEL and Path(PIPER_MODEL).is_file()),
             "tokenRequired": True,
             "version": 1
