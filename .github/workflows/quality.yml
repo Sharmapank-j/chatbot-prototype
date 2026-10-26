@@ -32,3 +32,5 @@ jobs:
         run: npm run type-check
       - name: Lint
         run: npm run lint
+      - name: Unit tests
+        run: npm test -- --runInBand
