@@ -2,8 +2,6 @@
 
 **Turn a batch of comic pages into a voiced, subtitled anime-style video — with local-first tools and optional cloud-quality generation.**
 
-> Project transformation is happening on the `indica-anime-us` branch of `chatbot-prototype`; `main` remains untouched.
-
 ## Product goal
 
 Upload multiple comic page images or a PDF. Indica Anime Us should automatically:
@@ -18,8 +16,6 @@ Upload multiple comic page images or a PDF. Indica Anime Us should automatically
 **Honest offline promise:** The application shell, importing, panel review, editing, subtitle/timeline management, and motion-comic export are designed to work locally. High-quality generative image/video and neural voice models require separately installed model weights and suitable hardware, or an explicitly enabled cloud provider. Strict offline mode must fail closed instead of making network calls.
 
 ## Quick start (Windows / laptop)
-
-The repository is being migrated from a chatbot prototype. Until the Indica migration is complete, do not run old chatbot/Supabase instructions from this branch.
 
 Requirements: Windows 10/11, Git, Node.js 20+, Python 3.11+, FFmpeg. Python CV/OCR extras are optional but recommended.
 
@@ -43,12 +39,6 @@ The setup script is intended to create a Python virtual environment, check tool 
 | Anime-style image/video generation | Not claimed by base renderer | Depends on VRAM/model | Optional provider adapter |
 | Voice | Silent/captioned output works | Local TTS if installed | Optional TTS provider |
 | Lip sync / complex character motion | Not guaranteed by base renderer | Model-specific | Optional video/lip-sync provider |
-
-## Reference projects
-
-- [srt-whiteboard-animation](https://github.com/geeklee/srt-whiteboard-animation): inspiration for SRT/timeline-driven scenes, semantic ordering, and a reviewable rendering process. Reuse only ideas; inspect its license before copying code.
-- [Open-GenAi-Repo](https://github.com/Sharmapank-j/Open-GenAi-Repo): inspiration for provider adapters, model capability metadata, submit/poll/result handling, local inference options, and reusable media studio patterns.
-- [chatbot-prototype](https://github.com/Sharmapank-j/chatbot-prototype): starting codebase. The `main` branch is preserved.
 
 ## Architecture
 
@@ -74,4 +64,4 @@ Only process comic pages you own or are authorized to adapt. Copyright status va
 
 ## Status
 
-This branch contains the product specification, architecture and implementation plan. A production-grade converter is a multi-stage build; do not label unimplemented AI functions as operational. Follow the roadmap and use acceptance tests for each stage.
+The repository contains the product specification, architecture and an implementation foundation. A production-grade converter is a multi-stage build; do not label unimplemented AI functions as operational. Follow the roadmap and use acceptance tests for each stage.
