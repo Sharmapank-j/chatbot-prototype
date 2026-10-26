@@ -37,14 +37,17 @@ def command_available(command: str) -> bool:
     return bool(shutil.which(command) or Path(command).is_file())
 
 
-def decode_image(data_url: str, destination: Path) -> None:
+def decode_image(data_url: str, destination: Path) -> Path:
     match = ALLOWED_IMAGE.fullmatch(data_url)
     if not match:
         raise ValueError("Each shot needs a base64 PNG, JPEG or WEBP source image.")
     raw = base64.b64decode(match.group(2), validate=False)
     if not raw or len(raw) > 8 * 1024 * 1024:
         raise ValueError("Each rendered image must be no larger than 8 MB.")
-    destination.write_bytes(raw)
+    suffix = {"png": ".png", "jpeg": ".jpg", "webp": ".webp"}[match.group(1)]
+    image_path = destination.with_suffix(suffix)
+    image_path.write_bytes(raw)
+    return image_path
 
 
 def seconds(value: object, default: float = 3.0) -> float:
@@ -191,8 +194,7 @@ class Handler(BaseHTTPRequestHandler):
                     duration = seconds(shot.get("duration"))
                     frames = max(6, round(duration * FPS))
                     duration = frames / FPS
-                    image = root / f"source-{index:03}.img"
-                    decode_image(str(shot.get("imageDataUrl", "")), image)
+                    image = decode_image(str(shot.get("imageDataUrl", "")), root / f"source-{index:03}")
                     # FFmpeg's frame-count-based zoompan is repeatable for a given input and settings.
                     clip = root / f"clip-{index:03}.mp4"
                     zoom = float(shot.get("zoom", 1.04))
@@ -226,8 +228,14 @@ class Handler(BaseHTTPRequestHandler):
                 srt_file = root / "subtitles.srt"
                 srt_file.write_text("\n".join(subtitles), encoding="utf-8")
                 final_video = root / "episode.mp4"
-                # MP4 contains H.264 video, AAC voice audio, and a selectable mov_text subtitle track.
-                run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_video), "-i", str(voice_track), "-i", str(srt_file), "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text", "-shortest", "-movflags", "+faststart", str(final_video)])
+                # MP4 contains H.264 video and AAC voice audio; subtitles are embedded when available.
+                mux = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_video), "-i", str(voice_track)]
+                if subtitles:
+                    mux.extend(["-i", str(srt_file), "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0", "-c:s", "mov_text"])
+                else:
+                    mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
+                mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(final_video)])
+                run(mux)
                 manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "audio": "Piper local TTS where configured; otherwise silence", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
                 manifest_file = root / "render-manifest.json"
                 manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
