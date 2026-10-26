@@ -1,65 +1,53 @@
-# Roadmap and acceptance gates
+# Roadmap
 
-## P0 — Make branch safe and coherent
+## P0 — Branch migration and safety
+- Replace product identity and chatbot copy/routes in this branch only.
+- Inventory chatbot auth/database/API dependencies before removal.
+- Retain required upstream licence notices and audit all references' licences.
+- Add Windows preflight and ensure no secrets are committed.
+- Run typecheck, lint, tests and build after each migration step.
 
-- Replace product name, metadata, landing and navigation.
-- Inventory chatbot-specific pages/API/auth/database dependencies before removal.
-- Ensure no legacy chatbot routes remain accessible in the Indica workspace.
-- Record license attribution and preserve untouched `main`.
-- Run install, typecheck, lint, tests and build after meaningful edits.
+## P1 — Offline motion-comic vertical slice
+- Folder-backed projects; import multiple images and PDFs.
+- Page preview, ordering, reading-direction control.
+- Panel detection with manual split/merge/reorder/exclude.
+- OCR adapter with editable transcript and confidence indicators.
+- Speaker list and dialogue editor.
+- Shot timeline with cut, fade, pan and zoom.
+- SRT/VTT import/export.
+- Local TTS only where an installed voice engine/model exists.
+- FFmpeg MP4 rendering with optional local audio and subtitles.
+- First-run capability preflight, no model downloads without explicit consent.
 
-## P1 — Offline local motion-comic MVP
+**Acceptance:** with outbound networking blocked after setup, user imports comic pages, corrects panel order/text, builds a timed motion-comic and exports a playable MP4.
 
-- Project creation and folder-backed workspace.
-- Import pages as images and PDF (input validation, size limits, page order).
-- Preview pages and hand-adjust reading direction.
-- Panel detection with manual split/merge, reorder and exclude.
-- OCR adapter and editable dialogue transcript with confidence markers.
-- Character/speaker list and editable dialogue lines.
-- Shot/timeline editor with pan, zoom, fade and cut.
-- Import/export SRT and VTT.
-- Local TTS integration only when voice engine and model are installed.
-- FFmpeg MP4 rendering with subtitles and optional audio track.
-- Offline preflight screen that shows exactly which capabilities are available.
+## P2 — AI-assisted script
+- Story beats, speaker hints, translation Hindi <-> English, continuity bible.
+- Model capability registry and prompt templates.
+- Local LLM integration through explicit localhost endpoints.
+- Review and cost/data-egress gates before generation.
 
-**P1 is complete when:** a user can add a small set of comic pages, correct panels/dialogue, create a timed motion-comic, and export a playable MP4 without internet access after installing dependencies/assets.
+## P3 — Anime shots
+- Generate keyframe stills per shot.
+- Reuse character/style references.
+- Add local image generation adapters where available/VRAM-compatible.
+- Add optional image-to-video adapters with cost estimate, submit/poll/cancel/retry, and result validation.
+- Review/compare/regenerate each shot. Explicitly warn about identity drift and motion artifacts.
 
-## P2 — AI-assisted story preparation
+## P4 — Voice and sound
+- Hindi Devanagari and English dialogue tracks; Hinglish optional.
+- Voice presets per character, speed/pitch/pronunciation overrides.
+- Audio segmentation, silence trim and mixing.
+- Optional licensed music/SFX library and ducking.
+- Optional lip-sync integration.
 
-- OCR correction suggestions, speaker extraction, scene/beat summaries.
-- Translation Hindi <-> English; preserve source text.
-- Story bible and character/reference board per project.
-- Provider and model capability registry.
-- Prompt templates and reusable generation settings.
-- Review gates before running paid generation.
-
-## P3 — Anime shot creation
-
-- Generate keyframe stills for each shot.
-- Character and style references attached consistently to every compatible call.
-- Local image-generation adapters based on available VRAM/model compatibility.
-- Optional image-to-video providers with cost estimate, submit/poll, cancellation, retry and output validation.
-- Shot review, regenerate and compare alternatives.
-- Explicit warning: generated motion may alter facial details or panel continuity.
-
-## P4 — Dialogue, dubbing and sound
-
-- Hindi (Devanagari) and English tracks; Hinglish optional.
-- Per-character voices, timing and pronunciation overrides.
-- Audio segmentation and silence trimming.
-- Optional lip-sync provider.
-- Music/SFX library with per-track gain, ducking, fades, and license metadata.
-- Subtitle burn-in or soft subtitles.
-
-## P5 — Usability, performance, release
-
-- Installable Windows package and guided first-run setup.
-- Queue limits, resumable jobs, logs, automatic disk-space warnings.
-- Job-level costs/outbound-data indicators for cloud mode.
-- Accessibility, keyboard controls and mobile project review.
-- Playwright smoke tests; Python unit tests; sample licensed pages and golden render.
-- SBOM/dependency audit, secret scanning, security review, license notices and release checklist.
+## P5 — Packaging and quality
+- Windows setup wizard and troubleshooting.
+- Resume jobs, queue concurrency limits, structured redacted logs.
+- Disk-space and cache controls.
+- Tests for malicious uploads, path traversal, subtitle parsing, retries and missing binaries.
+- Playwright workflow tests, Python unit tests and a licensed sample project.
+- Dependency/licence audit, secret scan, SBOM and release checklist.
 
 ## Definition of done
-
-No fake AI: buttons reflect actual available capabilities. The offline core must work when outbound networking is blocked after setup. Cloud mode must display provider/model, media-egress notice, and cost when supported. Project data is private by default and deletions are explicit.
+No fake AI: UI availability matches actual engines. Offline core works with network blocked. Cloud actions show provider, model and outbound-data consent, and cost where supported. Data is private by default; deletion is explicit.
