@@ -234,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
                     mux.extend(["-i", str(srt_file), "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0", "-c:s", "mov_text"])
                 else:
                     mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
-                mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(final_video)])
+                mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
                 run(mux)
                 manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "audio": "Piper local TTS where configured; otherwise silence", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
                 manifest_file = root / "render-manifest.json"
