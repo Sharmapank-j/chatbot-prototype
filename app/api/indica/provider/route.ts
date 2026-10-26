@@ -12,7 +12,7 @@ type ProviderInput = {
   imageDataUrl?: string
 }
 
-const MAX_IMAGE_BYTES = 7 * 1024 * 1024
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024
 const MAX_PROMPT_CHARS = 12000
 const MAX_KEY_CHARS = 4096
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     const content: Array<Record<string, unknown>> = [{ type: "text", text: prompt }]
     if (action === "analyze") {
       const image = typeof input.imageDataUrl === "string" ? parseImageDataUrl(input.imageDataUrl) : null
-      if (!image) return jsonError("Analysis requires a PNG, JPEG, WEBP or GIF image under 7 MB.", 400)
+      if (!image) return jsonError("Analysis requires a PNG, JPEG, WEBP or GIF image under 3 MB.", 400)
       content.push({ type: "image_url", image_url: { url: `data:${image.mime};base64,${image.base64}`, detail: "high" } })
     }
     const response = await fetch(`${baseUrl}/chat/completions`, {
