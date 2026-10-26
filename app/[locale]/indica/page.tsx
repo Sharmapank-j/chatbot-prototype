@@ -355,7 +355,7 @@ export default function IndicaWorkspacePage() {
     setBusy(true)
     try {
       if(file.size>520*1024*1024)throw new Error("Project bundle exceeds the 520 MB import limit.")
-      const parsed=JSON.parse(await file.text()) as Project & {formatVersion?:number;assets:Array<{id:string;name:string;type:string;size:number;dataUrl?:string}>}
+      const parsed=JSON.parse(await file.text()) as Omit<Project,"assets"> & {formatVersion?:number;assets:Array<{id:string;name:string;type:string;size:number;dataUrl?:string}>}
       if(parsed.formatVersion!==2||!parsed.id||!Array.isArray(parsed.assets)||!Array.isArray(parsed.shots))throw new Error("This is not a supported complete Indica project bundle. Export a fresh .indica.json backup from the latest studio.")
       const assets:Asset[]=parsed.assets.map(asset=>{
         if(typeof asset.dataUrl!=="string")throw new Error(`Missing embedded source file for ${asset.name}.`)
