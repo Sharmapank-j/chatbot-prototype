@@ -15,7 +15,7 @@ Upload multiple comic page images or a PDF. Indica Anime Us should automatically
 
 **Honest offline promise:** The application shell, importing, panel review, editing, subtitle/timeline management, and motion-comic export are designed to work locally. High-quality generative image/video and neural voice models require separately installed model weights and suitable hardware, or an explicitly enabled cloud provider. Strict offline mode must fail closed instead of making network calls.
 
-## Quick start (Windows / laptop)
+## Try the hosted prototype\n\nThe Vercel preview dashboard lets testers create local projects, import page images, edit shot timing and dialogue, export SRT/project files, and render a browser-recorded motion-comic. It stores source assets in the current browser profile; it does not upload them to a shared project backend. See [docs/PROTOTYPE_GUIDE.md](docs/PROTOTYPE_GUIDE.md) for the supported workflow and limitations.\n\n## Quick start (Windows / laptop)
 
 Requirements: Windows 10/11, Git, Node.js 20+, Python 3.11+, FFmpeg. Python CV/OCR extras are optional but recommended.
 
