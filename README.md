@@ -26,7 +26,7 @@ Requirements: Windows 10/11, Git, Node.js 20+, Python 3.11+, FFmpeg. Python CV/O
 ```powershell
 git clone --branch indica-anime-us https://github.com/Sharmapank-j/chatbot-prototype.git indica-anime-us
 cd indica-anime-us
-.scriptssetup-windows.ps1
+.\scripts\setup-windows.ps1
 ```
 
 The setup script is intended to create a Python virtual environment, check tool availability, and prepare local folders without downloading model weights. For the web UI, install npm dependencies and start the Next.js development server using the commands in the setup output.
