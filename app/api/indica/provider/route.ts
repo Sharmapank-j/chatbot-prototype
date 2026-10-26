@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       const image = result.data?.[0]
       if (image?.b64_json) {
         const size = Math.floor(image.b64_json.length * 3 / 4)
-        if (size > 12 * 1024 * 1024) return jsonError("Generated image exceeded the response size limit.", 502)
+        if (size > 3 * 1024 * 1024) return jsonError("Generated image exceeded the response size limit.", 502)
         return NextResponse.json({ imageDataUrl: `data:image/png;base64,${image.b64_json}`, revisedPrompt: image.revised_prompt ?? prompt })
       }
       if (image?.url && /^https:\/\//.test(image.url)) return NextResponse.json({ imageUrl: image.url, revisedPrompt: image.revised_prompt ?? prompt })
