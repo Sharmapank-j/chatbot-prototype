@@ -25,6 +25,7 @@ HOST = "127.0.0.1"
 PORT = int(os.environ.get("INDICA_WORKER_PORT", "8765"))
 TOKEN = os.environ.get("INDICA_WORKER_TOKEN", "").strip() or base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
 FFMPEG = os.environ.get("INDICA_FFMPEG_BIN", "ffmpeg")
+FFPROBE = os.environ.get("INDICA_FFPROBE_BIN", "ffprobe")
 PIPER = os.environ.get("INDICA_PIPER_BIN", "piper")
 PIPER_MODEL = os.environ.get("INDICA_PIPER_MODEL", "").strip()
 MAX_BODY = 180 * 1024 * 1024
@@ -77,7 +78,7 @@ def run(command: list[str], timeout: int = 300) -> None:
 
 def media_duration(path: Path) -> float:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        [FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
         capture_output=True, text=True, timeout=30, check=False
     )
     if result.returncode:
@@ -284,6 +285,8 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     if not command_available(FFMPEG):
         raise SystemExit(f"FFmpeg not found: {FFMPEG}. Install FFmpeg and add it to PATH.")
+    if not command_available(FFPROBE):
+        raise SystemExit(f"FFprobe not found: {FFPROBE}. Install FFmpeg (including FFprobe) and add it to PATH.")
     print(f"Indica local worker listening at http://{HOST}:{PORT}", flush=True)
     print(f"FFmpeg: {FFMPEG}", flush=True)
     print(f"Piper TTS: {'configured' if command_available(PIPER) and PIPER_MODEL and Path(PIPER_MODEL).is_file() else 'not configured (video exports silence)' }", flush=True)
