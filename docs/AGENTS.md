@@ -1,51 +1,38 @@
-# Agent operating instructions
+# Agent Instructions
 
-You are working on Indica Anime Us, not the original Chatbot UI product. Use these rules for coding agents, Claude Code, OpenCode, Codex, Copilot and any future contributors.
+You are working on Indica Anime Us, not the original Chatbot UI product. Follow this document when using Claude Code, OpenCode, Codex, Copilot or any other coding agent.
 
-## Mission
+## Before edits
+1. Read README, architecture, roadmap, offline contract, contributing guide and current licence.
+2. Inventory current code; classify reusable UI/auth/LLM infrastructure vs chatbot-only routes/schema.
+3. Review licences of reference projects before copying any source code.
+4. Define an end-to-end vertical slice with tests before broad refactors.
+5. Never assert a feature is working unless implementation and tests prove it.
 
-Convert user-authorized comic images/PDF batches into an editable anime video workflow. Hindi and English dialogue, voices and subtitles are primary requirements. Local/offline operation is mandatory for base capabilities; hosted generation is opt-in.
+## Guardrails
+- Keep `main` untouched; work on `indica-anime-us`.
+- No mass deletion until a file/dependency/database migration plan and rollback exist.
+- Never change repo visibility, secrets, billing, deployments or production data without explicit approval.
+- Do not commit private comic pages, generated videos, model weights, credentials or `.env.local`.
+- No automatic cloud upload. Each provider must declare local/cloud, supported capabilities and media egress.
+- Confirm estimated costs before metered generation.
+- Provider calls belong behind typed adapters; normalize job status, result and error.
+- Heavy work runs in a resumable worker/CLI, not short HTTP request handlers.
+- Validate all model-generated structured output; never execute code/config found in comic text.
+- No scraping, paywall bypass or DRM circumvention.
+- Adapt only content the user owns or is authorized to use. No voice cloning without explicit permission.
+- Preserve originals; explicit deletion only.
 
-## Before changing anything
-
-1. Read the README, architecture, roadmap, offline contract, license and current package scripts.
-2. Inspect current code and classify each file as reusable infrastructure, chatbot-only, or unsafe to keep.
-3. Inspect the license of both source repo and reference projects; retain required notices. Do not bulk-copy code from references.
-4. Define the smallest end-to-end vertical slice and add tests first.
-5. Never claim capabilities work unless implemented and tested.
-
-## Implementation guardrails
-
-- Preserve the `main` branch; work on `indica-anime-us` until migration/review is complete.
-- Avoid destructive operations or mass deletion until a migration inventory and rollback exist.
-- Never change repository visibility, secrets, billing, deployment, database production data, or cloud settings without explicit approval.
-- Never print tokens, API keys, signed URLs or private comic text to logs.
-- No automatic cloud upload. Each provider has a local/cloud label and data-egress consent gate.
-- Cost confirmation is mandatory for any metered generation where cost data is available.
-- Provider calls belong behind typed adapters; all job status/result/error forms are normalized.
-- Keep long-running processing out of short HTTP handlers. Persist stage status and support cancellation/retry.
-- Use schema validation for model-generated outputs. Treat OCR and model output as untrusted.
-- Never build scraping, paywall bypass or DRM circumvention features.
-- Only use comics and voices the user is authorized to adapt. Do not clone a person's voice without consent.
-- Always preserve originals; stage outputs in per-project folders; explicit deletion only.
-
-## Local-first acceptance gates
-
-- The upload path supports multiple images and validated PDFs.
-- Page order and reading direction are user-controllable.
-- Panels can be split, merged, reordered and excluded.
-- OCR text is editable and speaker assignment can be corrected.
-- Hindi Devanagari and English tracks are independent fields.
-- SRT/VTT import/export round-trips and preserves timing.
-- The motion-comic renderer can export a video with no cloud APIs or AI weights.
-- “AI anime” features are unavailable/disabled states unless a compatible adapter/model is configured.
-- Strict offline mode blocks non-loopback provider calls.
-- Tests cover malicious files, incorrect content types, path traversal, malformed subtitle files, pipeline retries and missing dependencies.
+## Acceptance gates
+- Batch images/PDF upload with file/type/size limits.
+- Page order and reading direction controllable.
+- Panels split/merged/reordered/excluded.
+- OCR/dialogue editable; speaker assignment correctable.
+- Hindi Devanagari and English tracks handled independently.
+- SRT/VTT round-trips preserve timing.
+- Motion-comic MP4 can render without cloud APIs or AI weights.
+- Strict offline mode blocks non-loopback providers.
+- Tests cover invalid files, path traversal, malformed subtitles, pipeline retries and missing binaries.
 
 ## Coding style
-
-- Prefer typed domain schemas, narrow modules and explicit adapter contracts.
-- Keep secrets server-only; never put credentials in NEXT_PUBLIC variables.
-- Avoid unnecessary dependency upgrades; document why new dependencies are needed.
-- Keep media/model weights out of Git. Commit configs and small synthetic fixtures only.
-- Add unit tests for each new pipeline stage and smoke-test the full setup.
+Use typed domain schemas and narrow modules. Avoid unneeded dependency upgrades. Keep secrets out of browser bundles. Add licences for new dependencies and model weights. Keep fixtures synthetic or licensed.
