@@ -499,7 +499,7 @@ export default function IndicaWorkspacePage() {
   }
   async function loadLocalGguf() {
     if(!localWorkerToken.trim()){setNotice("Start the local worker and paste its session token before loading a GGUF.");return}
-    if(!localModelPath){setNotice("Choose a .gguf model file in the local file picker.");return}
+    if(!localModelPath.trim()){setNotice("Enter the local filesystem path to your .gguf model. Browsers generally hide native file paths.");return}
     setProviderBusy(true);setLocalModelStatus("Loading model into local llama.cpp…")
     try {
       const result=await localWorkerFetch("/llama/load",{modelPath:localModelPath,contextTokens:localContext,gpuLayers:localGpuLayers,waitSeconds:120})
