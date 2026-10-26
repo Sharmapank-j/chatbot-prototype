@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { parseImageDataUrl, validateProviderUrl } from "@/lib/indica/provider-validation"
+import { assertPublicProviderHost, parseImageDataUrl, validateProviderUrl } from "@/lib/indica/provider-validation"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -53,6 +53,11 @@ export async function POST(request: NextRequest) {
   if (!baseUrl || !model || !apiKey || apiKey.length > MAX_KEY_CHARS) return jsonError("Provider URL, model, and API key are required.", 400)
   const providerUrl = validateProviderUrl(baseUrl)
   if (!providerUrl) return jsonError("Provider URL must be HTTPS on a public host. Local/private network endpoints are not accepted by this hosted API.", 400)
+  try {
+    await assertPublicProviderHost(providerUrl)
+  } catch {
+    return jsonError("Provider hostname could not be verified as public. Private, reserved, or unresolved hosts are rejected.", 400)
+  }
   if (!prompt || prompt.length > MAX_PROMPT_CHARS) return jsonError(`Prompt is required and must be under ${MAX_PROMPT_CHARS} characters.`, 400)
 
   const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }
@@ -65,7 +70,8 @@ export async function POST(request: NextRequest) {
         headers,
         body: JSON.stringify({ model, prompt, n: 1, size: "1024x1024", response_format: "b64_json" }),
         signal: AbortSignal.timeout(90000),
-        cache: "no-store"
+        cache: "no-store",
+        redirect: "error"
       })
       if (!response.ok) return jsonError(await readProviderError(response), 502)
       const result = await response.json() as { data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }> }
@@ -95,7 +101,8 @@ export async function POST(request: NextRequest) {
         max_tokens: action === "analyze" ? 3500 : 5000
       }),
       signal: AbortSignal.timeout(90000),
-      cache: "no-store"
+      cache: "no-store",
+      redirect: "error"
     })
     if (!response.ok) return jsonError(await readProviderError(response), 502)
     const result = await response.json() as { choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }> }
