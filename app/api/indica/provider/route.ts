@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server"\nimport { parseImageDataUrl, validateProviderUrl } from "@/lib/indica/provider-validation"
+import { NextRequest, NextResponse } from "next/server"
+import { parseImageDataUrl, validateProviderUrl } from "@/lib/indica/provider-validation"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
