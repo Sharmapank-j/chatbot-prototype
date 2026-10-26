@@ -1,6 +1,6 @@
 "use client"
 
-import { IconArrowRight, IconBook2, IconMovie, IconMicrophone2, IconOffline } from "@tabler/icons-react"
+import { IconArrowRight, IconBook2, IconMovie, IconMicrophone2 } from "@tabler/icons-react"
 import Link from "next/link"
 
 const steps = [
@@ -32,7 +32,7 @@ export default function HomePage() {
         <section className="grid flex-1 items-center gap-12 py-16 lg:grid-cols-[1.05fr_.95fr] lg:py-20">
           <div className="max-w-2xl">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-violet-200/20 bg-violet-200/[.06] px-3 py-1.5 text-xs text-violet-100/80">
-              <IconOffline size={15} /> Offline base · Optional AI providers
+              <IconBook2 size={15} /> Offline base · Optional AI providers
             </div>
             <h1 className="text-5xl font-semibold leading-[1.04] tracking-[-.045em] sm:text-6xl lg:text-7xl">
               Comics in.
