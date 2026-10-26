@@ -412,14 +412,31 @@ export default function IndicaWorkspacePage() {
       return null
     } finally {setProviderBusy(false)}
   }
+  async function prepareProviderImage(blob:Blob):Promise<string> {
+    const url=URL.createObjectURL(blob)
+    try {
+      const image=new Image();image.src=url
+      await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(new Error("Could not decode selected image"))})
+      const scale=Math.min(1,1800/image.naturalWidth,1800/image.naturalHeight)
+      const canvas=document.createElement("canvas")
+      canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale))
+      const ctx=canvas.getContext("2d")
+      if(!ctx)throw new Error("Canvas unavailable for provider image compression")
+      ctx.drawImage(image,0,0,canvas.width,canvas.height)
+      for(const quality of [0.86,0.74,0.62,0.5]) {
+        const compressed=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("Image compression failed")),"image/jpeg",quality))
+        if(compressed.size<=2.8*1024*1024)return await blobToDataUrl(compressed)
+      }
+      throw new Error("Selected panel is too large to send safely to the provider. Crop the panel more tightly.")
+    } finally {URL.revokeObjectURL(url)}
+  }
   async function analyzeCurrentPage() {
     if(!project||!activeShot){setNotice("Import a comic page and select a shot first.");return}
     const asset=project.assets.find(a=>a.id===activeShot.assetId)
     if(!asset){setNotice("The selected shot has no source image.");return}
     try {
       const region=activeShot.crop?await cropRegion(asset.blob,activeShot.crop):asset.blob
-      if(region.size>7*1024*1024)throw new Error("Selected panel exceeds 7 MB. Reduce image size or run local OCR instead.")
-      const imageDataUrl=await blobToDataUrl(region)
+      const imageDataUrl=await prepareProviderImage(region)
       const prompt="Analyze this comic/manga panel as a visual production assistant. Return structured JSON with: panel_summary, characters (appearance and position), visible_text (each speech bubble/sign/SFX separately with exact text and confidence), dialogue (speaker, exact text, emotion, language), shot_type, camera_motion, visual_effects, scene_continuity, reading_order, and uncertainties. Do not invent unreadable words; mark them uncertain. Preserve original text/script. Use concise fields."
       await callAiProvider("analyze",prompt,imageDataUrl)
     } catch(error){setNotice(error instanceof Error?error.message:"Could not prepare the selected image for vision analysis.")}
