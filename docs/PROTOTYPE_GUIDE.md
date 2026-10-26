@@ -1,35 +1,46 @@
 # Indica Anime Us — prototype guide
 
-## Try the hosted studio
+## Hosted dashboard
 
-Open the Vercel preview URL attached to the latest deployment, then choose **Open workspace** and create a project. The application is a browser-side prototype: project records and imported image blobs are stored in IndexedDB on the current device/browser profile.
+Open the Vercel preview for the latest successful deployment, then open the workspace. Project records and source blobs are stored in IndexedDB in the current browser profile. The hosted site does not install or run FFmpeg or Piper on the laptop by itself.
 
-## Working prototype workflow
+## Import, edit, analyze
 
-1. Create a project and give it a name.
-2. Import JPG, PNG or WEBP pages. A project supports up to 30 image files and 500 MB total, with a 100 MB per-file limit.
-3. Review the shot sequence and edit each shot's title, speaker, dialogue, start time, duration and zoom.
-4. Use **Rectify pages**, **Detect panels**, and **Run OCR**. OpenCV.js detects page/panel candidates, PDF.js rasterizes PDF pages, and Tesseract.js performs on-demand OCR. Review every crop and recognized line. These browser engines are downloaded from public CDNs when first used.
-5. Optionally open **AI** and provide an OpenAI-compatible HTTPS endpoint, vision-capable model and API key. Use **Analyze selected panel** for visual analysis, **Generate scene plan** for shot prompts, or **Generate image** if the endpoint implements the OpenAI Images API. The key stays in page memory and is sent to the app's server route only for the request; it is not written to IndexedDB/localStorage.
-6. Preview dialogue using the operating system/browser speech engine where available.
-7. Export a portable `.indica.json` project bundle with embedded source assets, restore a bundle on another device, export SRT, or render a browser motion-comic.
+1. Create a project and import JPG, PNG, WEBP, PDF or supported video files. Video/PDF processing creates browser-side page/frame images. Batch limits apply.
+2. Review shot order and edit shot title, speaker, dialogue, start, duration, zoom and crop.
+3. Use Rectify pages, Detect panels and Run OCR. PDF.js rasterizes up to 30 pages per import operation; Tesseract.js runs English or Hindi+English OCR. Engines/language data load on demand from public CDNs, so the first run requires network access. Verify every OCR result.
+4. Optionally open AI and configure an OpenAI-compatible HTTPS endpoint and vision-capable model. Analyze a selected panel, generate a scene plan, apply extracted dialogue or submit an image-generation prompt. Cloud inference sends the selected image/prompt to that provider.
+5. Export a portable .indica.json bundle with source assets; restore a bundle on another device. Corrupt data, unsupported bundle versions, invalid asset references, size mismatches and invalid crop coordinates are rejected.
+
+## Deterministic local rendering and speech
+
+Vercel hosts the UI; media rendering runs in a separate local worker because serverless requests are not a reliable FFmpeg job queue.
+
+1. Install FFmpeg (including FFprobe) and make both commands available on PATH.
+2. For speech, install Piper and download a compatible ONNX voice model yourself. Do not auto-download multi-GB weights. Voice licenses and language support vary by model.
+3. In a terminal from the repository root, configure Piper in PowerShell and start the worker:
+
+   ```powershell
+   $env:INDICA_PIPER_MODEL = "C:\\models\\en_US-voice-medium.onnx"
+   # If Piper is not on PATH, set its full executable path:
+   # $env:INDICA_PIPER_BIN = "C:\\tools\\piper\\piper.exe"
+   python scripts/indica_local_worker.py
+   ```
+
+4. The worker binds to 127.0.0.1:8765 and prints a random bearer token. Keep the terminal open. In the studio Export tab, click Check local worker, paste the token, and choose Render MP4 + audio bundle.
+5. The worker creates deterministic 24 fps H.264 video with AAC audio, a separate voice-track.wav, subtitles.srt and render-manifest.json in a ZIP. If Piper is not configured, the audio track is silence and the manifest says so. The render currently supports up to 30 shots per job and a maximum 180 MB JSON request.
+6. The worker is loopback-only and requires the token. The token is held in page memory and is not included in project backups. Do not expose the worker port to your LAN or internet.
 
 ## Current boundaries
 
-- **PDF page extraction:** implemented in the browser with PDF.js, capped at 30 pages per import operation.
-- **OCR:** Tesseract.js with English or Hindi+English language data is loaded on demand. Results need human review, especially for stylized fonts and speech bubbles.
-- **Panel detection:** OpenCV.js contour-based candidate detection with optional page rectification. It is not a trained comic understanding model and can miss borderless, overlapping or irregular panels.
-- **Vision LLM:** configurable OpenAI-compatible `/chat/completions` gateway; custom providers must accept multimodal `image_url` content. AI image generation requires the compatible `/images/generations` endpoint. The hosted API rejects local/private hostnames and IP-literal provider URLs.
-- **Project restore:** portable `.indica.json` bundles embed image blobs as base64, so backups can be large; separate asset export remains available.
-- **Voice:** browser/system speech synthesis is a preview only. It does not create a persistent voice track or guarantee Hindi voice availability.
-- **AI providers:** none is configured by default. Provider calls send the selected image or prompt to the provider you choose; avoid confidential content unless your provider policy permits it. Keys are not persisted by the app, but they transit the app server during requests.
-- **Video:** rendering is local in the browser and uses its MediaRecorder implementation. Some browsers can record MP4; others produce WebM. For MP4 on a WebM-only browser, convert locally with FFmpeg:
-  ```bash
-  ffmpeg -i episode.webm -c:v libx264 -pix_fmt yuv420p -movflags +faststart episode.mp4
-  ```
-- **Persistence:** IndexedDB is local to the browser profile/device. Clearing site data removes local projects. Export backups before switching devices.
-- **Testing:** CI checks TypeScript, ESLint and unit tests. Validate the actual hosted deployment and perform a manual import/edit/export smoke test before inviting external testers.
+- OCR and PDF extraction are real browser engines, but depend on CDN availability unless their assets are self-hosted. Panel detection remains a contour heuristic; it is not a trained comic understanding model.
+- Local TTS requires an installed Piper executable and compatible ONNX voice model. Model selection, voice licensing and quality must be verified by the user.
+- FFmpeg rendering is implemented in the local worker. It is deterministic for the same inputs, tool versions and settings, but byte-for-byte identical output across different FFmpeg builds/platforms is not guaranteed.
+- The hosted vision route supports OpenAI-compatible chat-completions image_url payloads and the compatible Images API. It rejects IP-literal/private or unresolved provider hosts and disallows redirects. DNS and provider policies can still change; use a restricted API key and review media-egress consent.
+- IndexedDB is local to the browser profile/device. Export backups before clearing site data or switching devices.
+- CI runs TypeScript, ESLint, Jest, Python worker tests, a real FFmpeg render integration test and the production build. These checks do not replace manual visual/audio inspection of the deployed site and a configured Piper voice.
+- The local worker currently exports a full-project render bundle, not a resumable render queue. Cloud generation of complete video shots and lip-sync are separate provider integrations.
 
 ## Privacy and deployment
 
-Source images are processed in the browser by import, PDF conversion, OCR, and local render controls. If you use AI vision or generation, the selected image/prompt is sent to the configured provider through the app API. Provider keys are held only in page memory and are not stored in the project, IndexedDB or localStorage. The public site can be opened by other people, so avoid shared devices for private source material. Vercel serves the dashboard and relays provider calls; it does not provide shared project storage or a server-side FFmpeg render queue.
+Imported source pages stay in browser storage for local import/edit/export. If AI vision/generation is used, the selected image or prompt is sent through the app API to the configured provider. API keys are not saved in IndexedDB/localStorage, but transit the app server for the request. The local worker binds to loopback, authenticates render requests with a random token, and returns the output ZIP directly. Avoid shared computers for private source material.
