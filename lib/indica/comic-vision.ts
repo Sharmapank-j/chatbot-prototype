@@ -20,8 +20,10 @@ type BrowserWindow = Window & { cv?: CvApi; Tesseract?: TesseractApi; pdfjsLib?:
 function loadScript(url: string): Promise<void> {
   const host = window as BrowserWindow
   host.__indicaScripts ??= {}
-  if (host.__indicaScripts[url]) return host.__indicaScripts[url]
-  host.__indicaScripts[url] = new Promise((resolve, reject) => {
+  const cached = host.__indicaScripts[url]
+  if (cached) return cached
+
+  const loading = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[data-indica-src="${url}"]`)
     if (existing?.dataset.loaded === "true") { resolve(); return }
     const script = existing ?? document.createElement("script")
@@ -32,7 +34,8 @@ function loadScript(url: string): Promise<void> {
     script.onerror = () => { delete host.__indicaScripts?.[url]; reject(new Error(`Could not load processing engine: ${new URL(url).hostname}`)) }
     if (!existing) document.head.appendChild(script)
   })
-  return host.__indicaScripts[url]
+  host.__indicaScripts[url] = loading
+  return loading
 }
 
 async function getCv(): Promise<CvApi> {
