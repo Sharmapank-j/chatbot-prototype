@@ -49,6 +49,10 @@ npm run build
 
 The Python worker test suite includes an actual synthetic FFmpeg render when FFmpeg/FFprobe are installed. CI installs these tools and runs the suite. This is not a substitute for manually checking a real comic, a configured Piper voice, the deployed UI and audio/subtitle synchronization.
 
+## Local GGUF provider (llama.cpp)
+
+The AI dashboard supports a local text-generation provider through the companion worker. Install `llama-server` from llama.cpp, start `python scripts/indica_local_worker.py`, paste its one-run token into the AI tab, choose Local GGUF, and enter the absolute path of a local `.gguf` model. The model bytes are never uploaded. Browsers generally do not disclose file system paths from a file picker, so the path is entered explicitly. The adapter currently supports text/scene-plan generation only; it is not a vision or image-generation runtime.
+
 ## Product boundaries
 
 | Capability | Current status |
