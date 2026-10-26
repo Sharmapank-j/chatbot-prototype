@@ -22,6 +22,9 @@ Vercel hosts the UI; media rendering runs in a separate local worker because ser
 
    ```powershell
    $env:INDICA_PIPER_MODEL = "C:\\models\\en_US-voice-medium.onnx"
+   # Optional separate voice models for Hindi and English projects:
+   $env:INDICA_PIPER_MODEL_EN = "C:\\models\\en_US-voice-medium.onnx"
+   $env:INDICA_PIPER_MODEL_HI = "C:\\models\\hi_IN-voice-medium.onnx"
    # If Piper is not on PATH, set its full executable path:
    # $env:INDICA_PIPER_BIN = "C:\\tools\\piper\\piper.exe"
    python scripts/indica_local_worker.py
@@ -34,11 +37,11 @@ Vercel hosts the UI; media rendering runs in a separate local worker because ser
 ## Current boundaries
 
 - OCR and PDF extraction are real browser engines, but depend on CDN availability unless their assets are self-hosted. Panel detection remains a contour heuristic; it is not a trained comic understanding model.
-- Local TTS requires an installed Piper executable and compatible ONNX voice model. Model selection, voice licensing and quality must be verified by the user.
+- Local TTS requires an installed Piper executable and compatible ONNX voice model. Configure INDICA_PIPER_MODEL as a fallback, or INDICA_PIPER_MODEL_EN and INDICA_PIPER_MODEL_HI for separate project-language voices. Model licensing and quality must be verified by the user.
 - FFmpeg rendering is implemented in the local worker. It is deterministic for the same inputs, tool versions and settings, but byte-for-byte identical output across different FFmpeg builds/platforms is not guaranteed.
 - The hosted vision route supports OpenAI-compatible chat-completions image_url payloads and the compatible Images API. It rejects IP-literal/private or unresolved provider hosts and disallows redirects. DNS and provider policies can still change; use a restricted API key and review media-egress consent.
 - IndexedDB is local to the browser profile/device. Export backups before clearing site data or switching devices.
-- CI runs TypeScript, ESLint, Jest, Python worker tests, a real FFmpeg render integration test and the production build. These checks do not replace manual visual/audio inspection of the deployed site and a configured Piper voice.
+- CI runs TypeScript, ESLint, Jest, Python worker tests, a real FFmpeg render integration test, production build and Playwright browser test for import/edit/reload/backup/restore. These checks do not replace manual visual/audio inspection of the deployed site and a configured Piper voice.
 - The local worker currently exports a full-project render bundle, not a resumable render queue. Cloud generation of complete video shots and lip-sync are separate provider integrations.
 
 ## Privacy and deployment
