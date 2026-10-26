@@ -42,7 +42,7 @@ export default function HomePage() {
               Turn a batch of comic pages into an editable storyboard, moving scenes, Hindi or English dialogue, subtitles and a finished video — without forcing your source pages into a cloud upload.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
-              <Link href="/setup" className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-violet-100">
+              <Link href="/indica" className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-violet-100">
                 Open workspace <IconArrowRight size={18} />
               </Link>
               <Link href="https://github.com/geeklee/srt-whiteboard-animation" target="_blank" rel="noreferrer" className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium text-white/75 transition hover:border-white/30 hover:text-white">
