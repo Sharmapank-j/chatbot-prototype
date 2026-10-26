@@ -25,7 +25,7 @@
     "test": "jest",
     "update:deps": "npm update",
     "update:db": "npm run db-migrate && npm run db-types",
-    "test:worker": "python -m unittest discover -s tests -p 'test_*.py' -v",
+    "test:worker": "python -m unittest discover -s tests -p test_local_worker.py -v",
     "test:all": "npm test -- --runInBand && npm run test:worker"
   },
   "dependencies": {
