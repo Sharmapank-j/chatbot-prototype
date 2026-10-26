@@ -310,7 +310,7 @@ export default function IndicaWorkspacePage() {
         if(!asset)continue
         setNotice(`OCR ${i+1}/${nextShots.length}: ${shot.title}…`)
         const region=shot.crop?await cropRegion(asset.blob,shot.crop):asset.blob
-        const result=await extractText(region,project.language==="hi"?"hin+eng":"eng")
+        const result=await extractText(region,project.language==="en"?"eng":"hin+eng")
         if(result.text)nextShots[i]={...shot,dialogue:shot.dialogue.trim()?shot.dialogue:result.text}
         completed++
       }
@@ -447,6 +447,19 @@ export default function IndicaWorkspacePage() {
       const prompt="Analyze this comic/manga panel as a visual production assistant. Return structured JSON with: panel_summary, characters (appearance and position), visible_text (each speech bubble/sign/SFX separately with exact text and confidence), dialogue (speaker, exact text, emotion, language), shot_type, camera_motion, visual_effects, scene_continuity, reading_order, and uncertainties. Do not invent unreadable words; mark them uncertain. Preserve original text/script. Use concise fields."
       await callAiProvider("analyze",prompt,imageDataUrl)
     } catch(error){setNotice(error instanceof Error?error.message:"Could not prepare the selected image for vision analysis.")}
+  }
+  function applyVisionDialogue() {
+    if(!activeShot||!providerResult.trim()){setNotice("Run vision analysis first.");return}
+    try {
+      const jsonText=providerResult.slice(providerResult.indexOf("{"),providerResult.lastIndexOf("}")+1)
+      const parsed=JSON.parse(jsonText) as {dialogue?:Array<{speaker?:string;text?:string;exact_text?:string}>;visible_text?:Array<{text?:string;exact_text?:string;kind?:string}>}
+      const lines=(parsed.dialogue??[]).map(item=>({speaker:item.speaker??"",text:item.text??item.exact_text??""})).filter(item=>item.text.trim())
+      const visible=(parsed.visible_text??[]).map(item=>item.text??item.exact_text??"").filter(Boolean)
+      const text=lines.length?lines.map(item=>item.text).join("\\n"):visible.join("\\n")
+      if(!text.trim())throw new Error("No readable dialogue was found in the model response.")
+      updateShot(activeShot.id,{dialogue:text,...(lines[0]?.speaker?{speaker:lines[0].speaker}:{})})
+      setNotice("Applied the vision model's extracted text to the selected shot. Verify every line before export.")
+    }catch(error){setNotice(error instanceof Error?error.message:"Could not parse the vision response. Copy the text and edit dialogue manually.")}
   }
   async function generateScenePlan() {
     if(!project||!project.shots.length){setNotice("Import pages and create a storyboard before generating a scene plan.");return}
@@ -613,7 +626,7 @@ export default function IndicaWorkspacePage() {
                   </div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Analysis & generation output</h2><div className="flex gap-2"><button disabled={!providerResult} onClick={()=>downloadBlob(new Blob([providerResult],{type:"text/plain;charset=utf-8"}),`${safeName(project?.name??"indica")}-ai-output.txt`)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40"><IconDownload size={14} className="mr-1 inline"/> Save output</button><button disabled={!providerResult} onClick={()=>GenUICopy(providerResult)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">Copy output</button></div></div>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Analysis & generation output</h2><div className="flex gap-2"><button disabled={!providerResult} onClick={()=>downloadBlob(new Blob([providerResult],{type:"text/plain;charset=utf-8"}),`${safeName(project?.name??"indica")}-ai-output.txt`)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40"><IconDownload size={14} className="mr-1 inline"/> Save output</button><button disabled={!providerResult} onClick={()=>GenUICopy(providerResult)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">Copy output</button><button disabled={!activeShot||!providerResult} onClick={applyVisionDialogue} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40">Apply dialogue</button></div></div>
                   {providerImage&&<div className="mt-4">{providerImage.startsWith("data:image/")?<img src={providerImage} alt="AI-generated image" className="max-h-[420px] w-full rounded-xl object-contain"/>:<a href={providerImage} target="_blank" rel="noreferrer" className="text-sm text-violet-200 underline">Open generated image from provider</a>}<button onClick={()=>{if(providerImage.startsWith("data:"))downloadBlob(new Blob([Uint8Array.from(atob(providerImage.split(",")[1]),c=>c.charCodeAt(0))],{type:"image/png"}),`${safeName(project?.name??"indica")}-generated.png`);else window.open(providerImage,"_blank","noopener,noreferrer")}} className="mt-2 rounded-lg border border-white/10 px-3 py-2 text-xs">Save generated image</button></div>}
                   {providerResult?<pre className="mt-4 max-h-[650px] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-6 text-white/75">{providerResult}</pre>:<Empty text="Connect your provider, select a shot, and run vision analysis. The result appears here; scene prompts can then be sent to a compatible image-generation endpoint."/>}
                 </div>
