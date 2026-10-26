@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
   IconArrowLeft, IconBook2, IconCheck, IconChevronDown, IconChevronUp,
-  IconDownload, IconFileText, IconFolder, IconMovie, IconPlayerPlay,
+  IconDownload, IconFolder, IconMovie, IconPlayerPlay,
   IconPlus, IconRefresh, IconSettings, IconShieldLock, IconTrash, IconVolume,
   IconX
 } from "@tabler/icons-react"
@@ -447,7 +447,7 @@ export default function IndicaWorkspacePage() {
               {activeTab==="storyboard"&&<div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
                   <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Shot sequence</h2><span className="text-[10px] text-white/35">Select a shot to edit</span></div>
-                  {project.shots.length?<div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{project.shots.map((shot,index)=>{const asset=project.assets.find(a=>a.id===shot.assetId);const url=asset?URL.createObjectURL(asset.blob):"";return <ShotCard key={shot.id} shot={shot} index={index} selected={activeShot?.id===shot.id} asset={asset} onSelect={()=>setSelectedShot(shot.id)} onMove={delta=>moveShot(shot.id,delta)} onRemove={()=>updateProject({shots:project.shots.filter(s=>s.id!==shot.id)})} url={url}/>})}</div>:<Empty text="Import page images to create the first shots."/>}
+                  {project.shots.length?<div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{project.shots.map((shot,index)=>{const asset=project.assets.find(a=>a.id===shot.assetId);return <ShotCard key={shot.id} shot={shot} index={index} selected={activeShot?.id===shot.id} asset={asset} onSelect={()=>setSelectedShot(shot.id)} onMove={delta=>moveShot(shot.id,delta)} onRemove={()=>updateProject({shots:project.shots.filter(s=>s.id!==shot.id)})}/>})}</div>:<Empty text="Import page images to create the first shots."/>}
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
                   <h2 className="text-sm font-semibold">Shot inspector</h2>
@@ -470,7 +470,7 @@ export default function IndicaWorkspacePage() {
 function Status({label,state}:{label:string;state:string}) { return <div className="flex items-center justify-between gap-2"><span className="text-white/45">{label}</span><span className="text-right text-[10px] text-emerald-100/65">{state}</span></div> }
 function Metric({label,value}:{label:string;value:string}) { return <div className="rounded-xl border border-white/10 bg-white/[.025] p-3"><div className="text-[10px] uppercase tracking-widest text-white/35">{label}</div><div className="mt-2 text-xl font-semibold">{value}</div></div> }
 function Empty({text}:{text:string}) { return <div className="rounded-xl border border-dashed border-white/10 p-7 text-center text-xs leading-5 text-white/35">{text}</div> }
-function ShotCard({shot,index,selected,asset,onSelect,onMove,onRemove,url}:{shot:Shot;index:number;selected:boolean;asset?:Asset;onSelect:()=>void;onMove:(delta:number)=>void;onRemove:()=>void;url:string}) {
+function ShotCard({shot,index,selected,asset,onSelect,onMove,onRemove,url}:{shot:Shot;index:number;selected:boolean;asset?:Asset;onSelect:()=>void;onMove:(delta:number)=>void;onRemove:()=>void}) {
   const [src,setSrc] = useState("")
   useEffect(()=>{if(!asset){setSrc("");return}const next=URL.createObjectURL(asset.blob);setSrc(next);return()=>URL.revokeObjectURL(next)},[asset])
   return <article className={`overflow-hidden rounded-xl border ${selected?"border-violet-200/50 bg-violet-200/[.05]":"border-white/10 bg-black/10"}`}><button onClick={onSelect} className="block w-full text-left"><div className="flex aspect-video items-center justify-center bg-[#090a10]">{src?<img src={src} alt={asset?.name??shot.title} className="h-full w-full object-contain"/>:<IconBook2 size={26} className="text-white/20"/>}</div><div className="p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-xs font-medium">{index+1}. {shot.title}</span><span className="shrink-0 text-[10px] text-white/35">{shot.duration.toFixed(1)}s</span></div><p className="mt-1 line-clamp-2 text-[10px] text-white/40">{shot.dialogue||"No dialogue yet"}</p></div></button><div className="flex items-center justify-between border-t border-white/10 px-2 py-1.5"><span className="text-[10px] text-white/35">{fmt(shot.start)} start</span><div className="flex"><button onClick={()=>onMove(-1)} aria-label="Move shot up" className="rounded p-1 text-white/45 hover:bg-white/10"><IconChevronUp size={14}/></button><button onClick={()=>onMove(1)} aria-label="Move shot down" className="rounded p-1 text-white/45 hover:bg-white/10"><IconChevronDown size={14}/></button><button onClick={onRemove} aria-label="Remove shot" className="rounded p-1 text-white/35 hover:text-red-200"><IconTrash size={14}/></button></div></div></article>
