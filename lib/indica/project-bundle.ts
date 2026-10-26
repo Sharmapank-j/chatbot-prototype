@@ -66,13 +66,17 @@ export function parseProjectBundle(text: string, fileName = "project.indica.json
   if (total > MAX_COMIC_BATCH_BYTES) throw new Error("Project exceeds the 500 MB source-asset limit.")
   const assetIds = new Set(assets.map(asset => asset.id))
   if (parsed.shots.length > 1000) throw new Error("Project contains too many timeline shots.")
+  const shotIds = new Set<string>()
   for (const shot of parsed.shots) {
-    if (!shot || typeof shot.id !== "string" || !assetIds.has(shot.assetId) ||
+    if (!shot || typeof shot.id !== "string" || !shot.id || shotIds.has(shot.id) ||
+        typeof shot.title !== "string" || typeof shot.dialogue !== "string" || typeof shot.speaker !== "string" ||
+        typeof shot.assetId !== "string" || !assetIds.has(shot.assetId) ||
         !Number.isFinite(shot.start) || shot.start < 0 ||
         !Number.isFinite(shot.duration) || shot.duration <= 0 || shot.duration > 3600 ||
         !Number.isFinite(shot.zoom) || shot.zoom < 1 || shot.zoom > 2) {
       throw new Error("Project timeline has invalid asset references, zoom, or timing values.")
     }
+    shotIds.add(shot.id)
     const crop = shot.crop
     if (crop && (![crop.x,crop.y,crop.w,crop.h].every(Number.isFinite) ||
         crop.x < 0 || crop.y < 0 || crop.w <= 0 || crop.h <= 0 ||
