@@ -151,8 +151,8 @@ export default function IndicaWorkspacePage() {
   const [notice, setNotice] = useState("Loading local workspace…")
   const [isDragging, setIsDragging] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [activeTab, setActiveTab] = useState<"assets"|"storyboard"|"dialogue"|"export">("storyboard")
-  const [renderProgress, setRenderProgress] = useState(0)
+  const [activeTab, setActiveTab] = useState<"assets"|"storyboard"|"dialogue"|"ai"|"export">("storyboard")
+  const [renderProgress, setRenderProgress] = useState(0)\n  const [providerBaseUrl, setProviderBaseUrl] = useState("https://api.openai.com/v1")\n  const [providerModel, setProviderModel] = useState("gpt-4o-mini")\n  const [providerKey, setProviderKey] = useState("")\n  const [providerResult, setProviderResult] = useState("")\n  const [providerImage, setProviderImage] = useState("")\n  const [providerBusy, setProviderBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const previewCanvas = useRef<HTMLCanvasElement>(null)
   const audioContext = useRef<AudioContext | null>(null)
@@ -361,6 +361,49 @@ export default function IndicaWorkspacePage() {
     utterance.onerror = () => setNotice("Voice preview failed or was interrupted.")
     window.speechSynthesis.speak(utterance)
   }
+  async function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>typeof reader.result==="string"?resolve(reader.result):reject(new Error("Could not read image"));reader.onerror=()=>reject(new Error("Could not read image"));reader.readAsDataURL(blob)})
+  }
+  async function callAiProvider(action:"analyze"|"generate"|"generate-image", prompt:string, imageDataUrl?:string) {
+    if(!providerKey.trim()){setNotice("Enter your provider API key in the AI Providers tab. The key is kept in page memory only.");setActiveTab("ai");return null}
+    setProviderBusy(true);setProviderResult("");setProviderImage("")
+    try {
+      const response=await fetch("/api/indica/provider",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,baseUrl:providerBaseUrl,model:providerModel,apiKey:providerKey,prompt,imageDataUrl})})
+      const result=await response.json() as {error?:string;text?:string;imageDataUrl?:string;imageUrl?:string;revisedPrompt?:string}
+      if(!response.ok)throw new Error(result.error||"Provider request failed")
+      if(result.text){setProviderResult(result.text);return result.text}
+      if(result.imageDataUrl||result.imageUrl){setProviderImage(result.imageDataUrl||result.imageUrl||"");setProviderResult(result.revisedPrompt||prompt);return result.revisedPrompt||prompt}
+      throw new Error("Provider returned no result")
+    } catch(error) {
+      setNotice(error instanceof Error?error.message:"AI provider request failed.")
+      return null
+    } finally {setProviderBusy(false)}
+  }
+  async function analyzeCurrentPage() {
+    if(!project||!activeShot){setNotice("Import a comic page and select a shot first.");return}
+    const asset=project.assets.find(a=>a.id===activeShot.assetId)
+    if(!asset){setNotice("The selected shot has no source image.");return}
+    try {
+      const region=activeShot.crop?await cropRegion(asset.blob,activeShot.crop):asset.blob
+      if(region.size>7*1024*1024)throw new Error("Selected panel exceeds 7 MB. Reduce image size or run local OCR instead.")
+      const imageDataUrl=await blobToDataUrl(region)
+      const prompt="Analyze this comic/manga panel as a visual production assistant. Return structured JSON with: panel_summary, characters (appearance and position), visible_text (each speech bubble/sign/SFX separately with exact text and confidence), dialogue (speaker, exact text, emotion, language), shot_type, camera_motion, visual_effects, scene_continuity, reading_order, and uncertainties. Do not invent unreadable words; mark them uncertain. Preserve original text/script. Use concise fields."
+      await callAiProvider("analyze",prompt,imageDataUrl)
+    } catch(error){setNotice(error instanceof Error?error.message:"Could not prepare the selected image for vision analysis.")}
+  }
+  async function generateScenePlan() {
+    if(!project||!project.shots.length){setNotice("Import pages and create a storyboard before generating a scene plan.");return}
+    const summary=project.shots.map((shot,index)=>({shot:index+1,title:shot.title,dialogue:shot.dialogue,speaker:shot.speaker,start:shot.start,duration:shot.duration,source:project.assets.find(a=>a.id===shot.assetId)?.name} ))
+    const prompt="You are a comic-to-anime pre-production director. Use this storyboard to produce a coherent, production-ready scene plan. Return shot-by-shot JSON with visual_prompt, preserve_character_design, camera_motion, transitions, ambient_audio, voice_direction, subtitle_text, and negative_prompt. Do not claim to have generated media. Preserve the source story and character continuity. Storyboard: "+JSON.stringify({project:project.name,language:project.language,aspect:project.aspect,shots:summary})
+    const result=await callAiProvider("generate",prompt)
+    if(result)setNotice("AI scene plan generated. Review it before using its prompts for image/video generation.")
+  }
+  async function generateImage() {
+    const prompt=providerResult.trim()
+    if(!prompt){setNotice("Run vision analysis or generate a scene plan first; the result will become the image-generation prompt.");return}
+    const result=await callAiProvider("generate-image",prompt)
+    if(result)setNotice("Image-generation request completed. Provider support depends on its OpenAI-compatible Images API.")
+  }
   async function renderVideo() {
     if (!project || !project.shots.length || !previewCanvas.current) { setNotice("Import at least one image to render a video."); return }
     const canvas = previewCanvas.current
@@ -491,12 +534,33 @@ export default function IndicaWorkspacePage() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-                <div className="flex gap-1 rounded-lg border border-white/10 bg-white/[.025] p-1">{(["assets","storyboard","dialogue","export"] as const).map(tab=><button key={tab} onClick={()=>setActiveTab(tab)} className={`rounded-md px-3 py-2 text-xs capitalize ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
+                <div className="flex gap-1 rounded-lg border border-white/10 bg-white/[.025] p-1">{(["assets","storyboard","dialogue","ai","export"] as const).map(tab=><button key={tab} onClick={()=>setActiveTab(tab)} className={`rounded-md px-3 py-2 text-xs capitalize ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
                 <div className="flex flex-wrap gap-2"><button disabled={busy||!project.assets.length} onClick={()=>void rectifyAssets()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 disabled:opacity-40">Rectify pages</button><button disabled={busy||!project.assets.length} onClick={()=>void detectPanels()} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40"><IconRefresh size={14} className="mr-1 inline"/> Detect panels</button><button disabled={busy||!project.shots.length} onClick={()=>void runOcr()} className="rounded-lg border border-cyan-200/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-40">Run OCR</button></div>
               </div>
 
               {activeTab==="assets"&&<div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold">Source asset library</h2><p className="mt-1 text-xs text-white/40">Original image files stored in this browser’s IndexedDB.</p></div><button onClick={()=>fileInput.current?.click()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/[.05]"><IconPlus size={14} className="mr-1 inline"/> Add assets</button></div>{project.assets.length?<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{project.assets.map((asset,index)=><AssetCard key={asset.id} asset={asset} index={index} onRemove={()=>updateProject({assets:project.assets.filter(a=>a.id!==asset.id),shots:project.shots.filter(s=>s.assetId!==asset.id)})}/>)}</div>:<Empty text="No source assets yet. Import comic page images above."/>}</div>}
 
+              {activeTab==="ai"&&<div className="grid gap-4 xl:grid-cols-[minmax(300px,.85fr)_minmax(0,1.15fr)]">
+                <div className="rounded-2xl border border-white/10 bg-white/[.025] p-5">
+                  <h2 className="text-lg font-semibold">Connect a vision-capable LLM</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/45">Use an OpenAI-compatible chat-completions endpoint that accepts image_url content. Works with compatible hosted endpoints and gateways; image generation additionally requires an OpenAI-compatible Images API.</p>
+                  <div className="mt-4 space-y-3">
+                    <label className="block text-xs text-white/55">API base URL<input value={providerBaseUrl} onChange={e=>setProviderBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-200/50"/></label>
+                    <label className="block text-xs text-white/55">Vision / chat model<input value={providerModel} onChange={e=>setProviderModel(e.target.value)} placeholder="gpt-4o-mini" className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-200/50"/></label>
+                    <label className="block text-xs text-white/55">API key (memory only)<input type="password" autoComplete="off" value={providerKey} onChange={e=>setProviderKey(e.target.value)} placeholder="Paste provider key for this session" className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-200/50"/></label>
+                    <div className="rounded-lg border border-amber-200/15 bg-amber-200/[.04] p-3 text-xs leading-5 text-amber-100/65">The key is not saved to IndexedDB or localStorage. It is sent over HTTPS to this app’s server endpoint for the provider request, then forwarded to your configured HTTPS provider. Use a restricted key with usage limits. Do not use this on a shared computer.</div>
+                    <button disabled={providerBusy||!providerKey.trim()||!providerModel.trim()||!providerBaseUrl.trim()} onClick={()=>void analyzeCurrentPage()} className="w-full rounded-lg bg-white px-3 py-2.5 text-sm font-semibold text-black disabled:opacity-40">{providerBusy?"Working…":"Analyze selected panel with vision"}</button>
+                    <button disabled={providerBusy||!project?.shots.length||!providerKey.trim()} onClick={()=>void generateScenePlan()} className="w-full rounded-lg border border-violet-200/25 px-3 py-2.5 text-sm text-violet-100 disabled:opacity-40">Generate scene plan & prompts</button>
+                    <button disabled={providerBusy||!providerResult.trim()||!providerKey.trim()} onClick={()=>void generateImage()} className="w-full rounded-lg border border-cyan-200/25 px-3 py-2.5 text-sm text-cyan-100 disabled:opacity-40">Generate image from result (if supported)</button>
+                    <p className="text-[10px] leading-5 text-white/35">Local OCR and panel detection remain available without a provider, but their processing engines are loaded on demand from public CDNs. A hosted Vercel server cannot directly call your laptop’s localhost LLM endpoint.</p>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[.025] p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Analysis & generation output</h2><div className="flex gap-2"><button disabled={!providerResult} onClick={()=>downloadBlob(new Blob([providerResult],{type:"text/plain;charset=utf-8"}),`${safeName(project?.name??"indica")}-ai-output.txt`)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40"><IconDownload size={14} className="mr-1 inline"/> Save output</button><button disabled={!providerResult} onClick={()=>GenUICopy(providerResult)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">Copy output</button></div></div>
+                  {providerImage&&<div className="mt-4">{providerImage.startsWith("data:image/")?<img src={providerImage} alt="AI-generated image" className="max-h-[420px] w-full rounded-xl object-contain"/>:<a href={providerImage} target="_blank" rel="noreferrer" className="text-sm text-violet-200 underline">Open generated image from provider</a>}<button onClick={()=>{if(providerImage.startsWith("data:"))downloadBlob(new Blob([Uint8Array.from(atob(providerImage.split(",")[1]),c=>c.charCodeAt(0))],{type:"image/png"}),`${safeName(project?.name??"indica")}-generated.png`);else window.open(providerImage,"_blank","noopener,noreferrer")}} className="mt-2 rounded-lg border border-white/10 px-3 py-2 text-xs">Save generated image</button></div>}
+                  {providerResult?<pre className="mt-4 max-h-[650px] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-6 text-white/75">{providerResult}</pre>:<Empty text="Connect your provider, select a shot, and run vision analysis. The result appears here; scene prompts can then be sent to a compatible image-generation endpoint."/>}
+                </div>
+              </div>}
               {activeTab==="storyboard"&&<div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
                 <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
                   <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Shot sequence</h2><span className="text-[10px] text-white/35">Select a shot to edit</span></div>
@@ -510,7 +574,7 @@ export default function IndicaWorkspacePage() {
 
               {activeTab==="dialogue"&&<div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Dialogue & subtitles</h2><button onClick={exportSrt} disabled={!project.shots.length} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40"><IconDownload size={14} className="mr-1 inline"/> Export SRT</button></div>{project.shots.length?<div className="space-y-3">{project.shots.map((shot,index)=><div key={shot.id} className="grid gap-3 rounded-xl border border-white/10 p-3 md:grid-cols-[100px_1fr_1fr]"><div><div className="text-xs font-medium">Shot {index+1}</div><div className="mt-1 text-[10px] text-white/35">{fmt(shot.start)} → {fmt(shot.start+shot.duration)}</div></div><label className="text-[10px] text-white/40">Speaker<input value={shot.speaker} onChange={e=>updateShot(shot.id,{speaker:e.target.value})} placeholder="Speaker name" className="mt-1 block w-full rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs text-white outline-none"/></label><label className="text-[10px] text-white/40">Dialogue / subtitle<textarea value={shot.dialogue} onChange={e=>updateShot(shot.id,{dialogue:e.target.value})} rows={2} placeholder="Type dialogue here. OCR is not connected in this prototype." className="mt-1 block w-full resize-y rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs text-white outline-none focus:border-violet-200/40"/></label></div>)}</div>:<Empty text="Add source pages to start dialogue editing."/>}</div>}
 
-              {activeTab==="export"&&<div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconMovie size={22} className="text-violet-200"/><h2 className="mt-3 text-lg font-semibold">Motion-comic render</h2><p className="mt-2 text-sm leading-6 text-white/45">Builds a video locally from your shot sequence with gentle zoom, timed dialogue overlays and your selected aspect ratio. It does not call an AI provider.</p><div className="mt-5 flex flex-wrap gap-2"><button disabled={busy||!project.shots.length} onClick={()=>void renderVideo()} className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40"><IconPlayerPlay size={16} className="mr-1 inline"/>{busy?"Rendering…":"Render video"}</button><button onClick={exportSrt} disabled={!project.shots.length} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm text-white/70 disabled:opacity-40">Export SRT</button></div>{busy&&<div className="mt-4"><div className="mb-1 flex justify-between text-xs text-white/40"><span>Rendering frames</span><span>{renderProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-violet-300 transition-all" style={{width:`${renderProgress}%`}}/></div></div>}</div><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconSettings size={22} className="text-cyan-200"/><h2 className="mt-3 text-lg font-semibold">Export & portability</h2><p className="mt-2 text-sm leading-6 text-white/45">Export the editable project manifest, download original assets, or create an SRT subtitle file. Browser support decides whether the video recorder produces MP4 or WebM.</p><div className="mt-5 flex flex-wrap gap-2"><button onClick={exportProject} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Project JSON</button><button onClick={exportAssets} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Download assets</button><button onClick={exportSrt} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Subtitles SRT</button></div><div className="mt-4 rounded-lg border border-amber-200/15 bg-amber-200/[.04] p-3 text-xs leading-5 text-amber-100/65">This public prototype stores files in the current browser only. Do not use private or sensitive source material on a shared computer. Neural OCR, model-backed voices and AI providers are not connected yet.</div></div></div>}
+              {activeTab==="export"&&<div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconMovie size={22} className="text-violet-200"/><h2 className="mt-3 text-lg font-semibold">Motion-comic render</h2><p className="mt-2 text-sm leading-6 text-white/45">Builds a video locally from your shot sequence with gentle zoom, timed dialogue overlays and your selected aspect ratio. It does not call an AI provider.</p><div className="mt-5 flex flex-wrap gap-2"><button disabled={busy||!project.shots.length} onClick={()=>void renderVideo()} className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40"><IconPlayerPlay size={16} className="mr-1 inline"/>{busy?"Rendering…":"Render video"}</button><button onClick={exportSrt} disabled={!project.shots.length} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm text-white/70 disabled:opacity-40">Export SRT</button></div>{busy&&<div className="mt-4"><div className="mb-1 flex justify-between text-xs text-white/40"><span>Rendering frames</span><span>{renderProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-violet-300 transition-all" style={{width:`${renderProgress}%`}}/></div></div>}</div><div className="rounded-2xl border border-white/10 bg-white/[.025] p-5"><IconSettings size={22} className="text-cyan-200"/><h2 className="mt-3 text-lg font-semibold">Export & portability</h2><p className="mt-2 text-sm leading-6 text-white/45">Export the editable project manifest, download original assets, or create an SRT subtitle file. Browser support decides whether the video recorder produces MP4 or WebM.</p><div className="mt-5 flex flex-wrap gap-2"><button onClick={exportProject} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Project JSON</button><button onClick={exportAssets} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Download assets</button><button onClick={exportSrt} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Subtitles SRT</button></div><div className="mt-4 rounded-lg border border-amber-200/15 bg-amber-200/[.04] p-3 text-xs leading-5 text-amber-100/65">This public prototype stores files in the current browser only. Do not use private or sensitive source material on a shared computer. Vision providers are optional and configured per session. Neural TTS and deterministic FFmpeg export are still separate integration work.</div></div></div>}
             </>}
           </section>
         </div>
@@ -520,7 +584,7 @@ export default function IndicaWorkspacePage() {
   )
 }
 
-function Status({label,state}:{label:string;state:string}) { return <div className="flex items-center justify-between gap-2"><span className="text-white/45">{label}</span><span className="text-right text-[10px] text-emerald-100/65">{state}</span></div> }
+function GenUICopy(value:string) { void navigator.clipboard?.writeText(value) }\nfunction Status({label,state}:{label:string;state:string}) { return <div className="flex items-center justify-between gap-2"><span className="text-white/45">{label}</span><span className="text-right text-[10px] text-emerald-100/65">{state}</span></div> }
 function Metric({label,value}:{label:string;value:string}) { return <div className="rounded-xl border border-white/10 bg-white/[.025] p-3"><div className="text-[10px] uppercase tracking-widest text-white/35">{label}</div><div className="mt-2 text-xl font-semibold">{value}</div></div> }
 function Empty({text}:{text:string}) { return <div className="rounded-xl border border-dashed border-white/10 p-7 text-center text-xs leading-5 text-white/35">{text}</div> }
 function AssetCard({asset,index,onRemove}:{asset:Asset;index:number;onRemove:()=>void}) {
