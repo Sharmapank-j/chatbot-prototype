@@ -409,8 +409,8 @@ export default function IndicaWorkspacePage() {
   async function prepareProviderImage(blob:Blob):Promise<string> {
     const url=URL.createObjectURL(blob)
     try {
-      const image=new Image();image.src=url
-      await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(new Error("Could not decode selected image"))})
+      const image=new Image()
+      await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(new Error("Could not decode selected image"));image.src=url})
       const scale=Math.min(1,1800/image.naturalWidth,1800/image.naturalHeight)
       const canvas=document.createElement("canvas")
       canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale))
