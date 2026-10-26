@@ -1,0 +1,64 @@
+version: 1
+product: indica-anime-us
+defaults:
+  execution: local-first
+  cloud_providers_enabled: false
+  strict_schema_validation: true
+  preserve_source_assets: true
+  max_parallel_media_jobs: 1
+  max_retry_attempts: 2
+  retry_backoff_seconds: [2, 5]
+  require_human_approval_before_final_render: true
+  secrets_in_project_manifest: false
+pipeline:
+  - id: intake
+    agent: intake-validation
+    stage: validating
+    depends_on: []
+    outputs: [asset_manifest, content_hashes]
+  - id: panel-analysis
+    agent: page-panel-vision
+    stage: analyzed
+    depends_on: [intake]
+    outputs: [panel_regions, reading_order, confidence]
+  - id: text-extraction
+    agent: ocr-dialogue
+    stage: awaiting_review
+    depends_on: [panel-analysis]
+    outputs: [ocr_spans, dialogue_draft, subtitle_draft]
+    approval: human
+  - id: continuity
+    agent: story-continuity
+    stage: awaiting_review
+    depends_on: [text-extraction]
+    outputs: [scene_graph, continuity_warnings, shot_plan]
+    approval: human
+  - id: generation
+    agent: prompt-generation
+    stage: generating
+    depends_on: [continuity]
+    outputs: [prompt_manifest, generated_asset_refs]
+    enabled_only_when: provider_configured_and_user_consented
+  - id: speech
+    agent: local-tts
+    stage: generating
+    depends_on: [text-extraction]
+    outputs: [wav_tracks, voice_manifest]
+    enabled_only_when: local_voice_model_available
+  - id: render
+    agent: ffmpeg-render
+    stage: rendering
+    depends_on: [continuity, speech]
+    outputs: [episode_mp4, voice_track_wav, subtitles_srt, render_manifest]
+  - id: verification
+    agent: artifact-verifier
+    stage: verifying
+    depends_on: [render]
+    outputs: [qa_report, checksums]
+    success_requires: [mp4_probe_pass, audio_sync_pass, subtitle_timing_pass, bundle_restore_pass]
+failure_policy:
+  preserve_completed_artifacts: true
+  retry_only_retryable_errors: true
+  never_retry_validation_errors: true
+  cancellation_kills_child_processes: true
+  record_failure_stage: true
