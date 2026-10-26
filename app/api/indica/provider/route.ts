@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       cache: "no-store",
       redirect: "error"
     })
-    if (!response.ok) return jsonError(await readProviderError(response), 502)
+    if (!response.ok) return jsonError(await readProviderError(response, apiKey), 502)
     const result = await response.json() as { choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }> }
     const rawContent = result.choices?.[0]?.message?.content
     const text = typeof rawContent === "string" ? rawContent : Array.isArray(rawContent) ? rawContent.map(part => part.text ?? "").join("\n") : ""
