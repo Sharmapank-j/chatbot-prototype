@@ -209,6 +209,8 @@ class Handler(BaseHTTPRequestHandler):
                     cursor = 0.0
                     total_frames = 0
                     tts_used = False
+                    shot_manifest: list[dict] = []
+                    language = str(data.get("language", "hi"))
                     for index, shot in enumerate(shots):
                         if not isinstance(shot, dict):
                             raise ValueError("Invalid shot entry.")
@@ -231,6 +233,14 @@ class Handler(BaseHTTPRequestHandler):
                         vf = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},zoompan=z='min(zoom+{(zoom-1)/max(1,frames):.8f},{zoom:.4f})':d={frames}:s={width}x{height}:fps={FPS},format=yuv420p"
                         run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(image), "-vf", vf, "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS), str(clip)], timeout=180)
                         clips.append(clip)
+                        shot_manifest.append({
+                            "shotId": str(shot.get("id", index + 1)),
+                            "title": str(shot.get("title", "Shot " + str(index + 1)))[:200],
+                            "sourceSha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+                            "durationSeconds": round(duration, 6),
+                            "frameCount": frames,
+                            "ttsUsed": has_voice
+                        })
                         if has_voice:
                             fitted = root / f"audio-fit-{index:03}.wav"
                             run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(voice), "-af", f"apad=pad_dur={duration},atrim=duration={duration}", "-ar", "24000", "-ac", "1", str(fitted)])
