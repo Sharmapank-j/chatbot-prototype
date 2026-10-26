@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react"
 import { classifyComicFile, MAX_COMIC_BATCH_BYTES, MAX_COMIC_FILES } from "@/lib/indica/file-validation"
 import { detectComicRegions, extractText, extractVideoFrames, pdfToImages, rectifyPage, cropRegion } from "@/lib/indica/comic-vision"
+import { parseProjectBundle, serializeProjectBundle } from "@/lib/indica/project-bundle"
 
 type Shot = {
   id: string
@@ -164,8 +165,6 @@ export default function IndicaWorkspacePage() {
   const [localWorkerStatus, setLocalWorkerStatus] = useState("Not checked")
   const fileInput = useRef<HTMLInputElement>(null)
   const restoreInput = useRef<HTMLInputElement>(null)
-  const previewCanvas = useRef<HTMLCanvasElement>(null)
-  const audioContext = useRef<AudioContext | null>(null)
   const totalBytes = useMemo(() => project?.assets.reduce((n, a) => n + a.size, 0) ?? 0, [project])
   const duration = useMemo(() => project?.shots.reduce((n, s) => Math.max(n, s.start + s.duration), 0) ?? 0, [project])
   const activeShot = project?.shots.find(s => s.id === selectedShot) ?? project?.shots[0] ?? null
@@ -343,12 +342,10 @@ export default function IndicaWorkspacePage() {
     if (!project) return
     setBusy(true)
     try {
-      const assets = await Promise.all(project.assets.map(async asset => ({id:asset.id,name:asset.name,type:asset.type,size:asset.size,dataUrl:await blobToDataUrl(asset.blob)})))
-      const json = { ...project, assets, formatVersion: 2, exportedAt: new Date().toISOString() }
-      const text = JSON.stringify(json)
+      const text = await serializeProjectBundle(project, blobToDataUrl)
       if (text.length > 650 * 1024 * 1024) throw new Error("Project bundle is too large to export as one JSON file. Export source assets individually.")
       downloadBlob(new Blob([text], {type:"application/json"}), `${safeName(project.name)}.indica.json`)
-      setNotice("Portable project bundle exported with source assets and timeline. Keep a backup before clearing browser data.")
+      setNotice("Portable project backup exported with source assets and timeline.")
     } catch(error) {
       setNotice(error instanceof Error?error.message:"Could not export the complete project bundle.")
     } finally { setBusy(false) }
@@ -358,24 +355,11 @@ export default function IndicaWorkspacePage() {
     setBusy(true)
     try {
       if(file.size>520*1024*1024)throw new Error("Project bundle exceeds the 520 MB import limit.")
-      const parsed=JSON.parse(await file.text()) as Omit<Project,"assets"> & {formatVersion?:number;assets:Array<{id:string;name:string;type:string;size:number;dataUrl?:string}>}
-      if(parsed.formatVersion!==2||!parsed.id||!Array.isArray(parsed.assets)||!Array.isArray(parsed.shots))throw new Error("This is not a supported complete Indica project bundle. Export a fresh .indica.json backup from the latest studio.")
-      const assets:Asset[]=parsed.assets.map(asset=>{
-        if(typeof asset.dataUrl!=="string")throw new Error(`Missing embedded source file for ${asset.name}.`)
-        const match=/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/.exec(asset.dataUrl)
-        if(!match)throw new Error(`Invalid source data for ${asset.name}.`)
-        const raw=atob(match[2]);const bytes=new Uint8Array(raw.length)
-        for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i)
-        return {id:asset.id,name:asset.name,type:asset.type||match[1],size:bytes.byteLength,blob:new Blob([bytes],{type:asset.type||match[1]})}
-      })
-      const total=assets.reduce((sum,a)=>sum+a.size,0)
-      if(assets.length>MAX_COMIC_FILES||total>MAX_COMIC_BATCH_BYTES)throw new Error("Project exceeds the current 30-asset / 500 MB project limits.")
-      const restored:Project={id:newId(),name:parsed.name||file.name.replace(/\.indica\.json$/i,""),createdAt:Date.now(),updatedAt:Date.now(),language:parsed.language||"hi",aspect:parsed.aspect||"16:9",direction:parsed.direction||"ltr",shots:parsed.shots,assets}
-      const ids=new Set(assets.map(a=>a.id))
-      if(restored.shots.some(s=>!ids.has(s.assetId)||!Number.isFinite(s.start)||!Number.isFinite(s.duration)||s.duration<=0))throw new Error("Project timeline has invalid asset references or timing values.")
+      const restored=parseProjectBundle(await file.text(),file.name) as Project
       await saveProject(restored)
       setProjects(current=>[restored,...current.filter(p=>p.id!==restored.id)])
-      setProject(restored);setSelectedShot(restored.shots[0]?.id??"");setNotice(`Restored ${restored.name} with ${assets.length} source assets and ${restored.shots.length} timeline shots.`)
+      setProject(restored);setSelectedShot(restored.shots[0]?.id??"")
+      setNotice(`Restored ${restored.name} with ${restored.assets.length} source assets and ${restored.shots.length} timeline shots.`)
     }catch(error){setNotice(error instanceof Error?error.message:"Project restore failed.")}
     finally{setBusy(false);if(restoreInput.current)restoreInput.current.value=""}
   }
