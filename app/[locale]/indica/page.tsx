@@ -9,6 +9,7 @@ import {
   IconX
 } from "@tabler/icons-react"
 import { classifyComicFile, MAX_COMIC_BATCH_BYTES, MAX_COMIC_FILES } from "@/lib/indica/file-validation"
+import { detectComicRegions, extractText, extractVideoFrames, pdfToImages, rectifyPage, cropRegion } from "@/lib/indica/comic-vision"
 
 type Shot = {
   id: string
@@ -220,66 +221,112 @@ export default function IndicaWorkspacePage() {
     if (!project || !list?.length) return
     const files = Array.from(list)
     const images = files.filter(f => classifyComicFile(f).kind === "image")
-    const pdfs = files.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"))
-    const rejected = files.filter(f => !images.includes(f) && !pdfs.includes(f))
-    if (rejected.length) setNotice(`${rejected.length} unsupported file(s) skipped. Use JPG, PNG, WEBP or PDF.`)
-    if (pdfs.length) setNotice("PDFs are recognized but page extraction is not included in this prototype yet. Export pages as PNG/JPG and import them with the image files.")
-    const existing = new Set(project.assets.map(a => `${a.name}:${a.size}`))
-    const fresh = images.filter(f => !existing.has(`${f.name}:${f.size}`))
-    if (project.assets.length + fresh.length > MAX_COMIC_FILES) { setNotice(`Project limit is ${MAX_COMIC_FILES} images.`); return }
-    if (project.assets.reduce((n,a)=>n+a.size,0) + fresh.reduce((n,f)=>n+f.size,0) > MAX_COMIC_BATCH_BYTES) { setNotice("Project limit is 500 MB total. Remove assets before importing more."); return }
-    if (!fresh.length) { if (!pdfs.length && !rejected.length) setNotice("No new image files to add."); return }
+    const pdfs = files.filter(f => classifyComicFile(f).kind === "pdf")
+    const videos = files.filter(f => f.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(f.name))
+    const rejected = files.filter(f => !images.includes(f) && !pdfs.includes(f) && !videos.includes(f))
+    if (rejected.length) setNotice(`${rejected.length} unsupported file(s) skipped. Use JPG, PNG, WEBP, PDF or a supported video.`)
     setBusy(true)
-    const assets: Asset[] = fresh.map(f => ({ id: newId(), name: f.name, type: f.type, size: f.size, blob: f }))
-    const newShots: Shot[] = assets.map((asset, index) => ({
-      id: newId(), assetId: asset.id, title: `Shot ${project.shots.length + index + 1}`,
-      dialogue: "", speaker: "", start: project.shots.reduce((n,s)=>Math.max(n,s.start+s.duration),0) + assets.slice(0,index).length*3,
-      duration: 3, zoom: 1.08
-    }))
-    const next = { ...project, assets: [...project.assets, ...assets], shots: [...project.shots, ...newShots], updatedAt: Date.now() }
-    setProject(next)
-    if (!selectedShot && newShots[0]) setSelectedShot(newShots[0].id)
-    setBusy(false)
-    setNotice(`${fresh.length} page image(s) imported into the local project. Dialogue and timing are editable.`)
+    try {
+      const incoming: Array<{name:string;type:string;blob:Blob}> = images.map(file=>({name:file.name,type:file.type||"image/jpeg",blob:file}))
+      for (const pdf of pdfs) {
+        setNotice(`Extracting pages from ${pdf.name}…`)
+        const pages=await pdfToImages(pdf,MAX_COMIC_FILES)
+        incoming.push(...pages.map(page=>({name:page.name,type:"image/jpeg",blob:page.blob})))
+      }
+      for (const video of videos) {
+        setNotice(`Sampling video frames and correcting page perspective: ${video.name}…`)
+        const frames=await extractVideoFrames(video,1.1,MAX_COMIC_FILES)
+        for (const frame of frames) {
+          let blob=frame.blob
+          try { blob=await rectifyPage(blob) } catch { /* Keep the frame if CV cannot find a page. */ }
+          incoming.push({name:frame.name,type:"image/jpeg",blob})
+        }
+      }
+      const existing = new Set(project.assets.map(a => `${a.name}:${a.size}`))
+      const fresh = incoming.filter(item => !existing.has(`${item.name}:${item.blob.size}`))
+      if (project.assets.length + fresh.length > MAX_COMIC_FILES) throw new Error(`Project limit is ${MAX_COMIC_FILES} source images/frames. Import fewer pages or split the episode into projects.`)
+      const currentBytes=project.assets.reduce((n,a)=>n+a.size,0)
+      const incomingBytes=fresh.reduce((n,f)=>n+f.blob.size,0)
+      if(currentBytes+incomingBytes>MAX_COMIC_BATCH_BYTES)throw new Error("Project limit is 500 MB total. Remove assets before importing more.")
+      if(!fresh.length){setNotice("No new supported media pages or frames to add.");return}
+      const assets:Asset[]=fresh.map(item=>({id:newId(),name:item.name,type:item.type,size:item.blob.size,blob:item.blob}))
+      const initialStart=project.shots.reduce((n,s)=>Math.max(n,s.start+s.duration),0)
+      const newShots:Shot[]=assets.map((asset,index)=>({
+        id:newId(),assetId:asset.id,title:`Shot ${project.shots.length+index+1}`,dialogue:"",speaker:"",
+        start:initialStart+index*3,duration:3,zoom:1.08
+      }))
+      const next={...project,assets:[...project.assets,...assets],shots:[...project.shots,...newShots],updatedAt:Date.now()}
+      setProject(next)
+      if(!selectedShot&&newShots[0])setSelectedShot(newShots[0].id)
+      setNotice(`Imported ${assets.length} page image(s)/video frame(s). Next run Detect panels, then OCR text to extract dialogue. Video/PDF conversion runs in your browser.`)
+    } catch(error) {
+      setNotice(error instanceof Error?error.message:"Media import failed.")
+    } finally {setBusy(false)}
   }
 
   async function detectPanels() {
     if (!project) return
-    const candidates: Shot[] = []
+    const candidates:Shot[]=[]
     setBusy(true)
-    for (const asset of project.assets) {
-      if (!asset.type.startsWith("image/")) continue
-      try {
-        const url = URL.createObjectURL(asset.blob)
-        const image = new Image()
-        image.src = url
-        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("image decode failed")) })
-        const panels = detectGutterPanels(image)
-        URL.revokeObjectURL(url)
-        const old = project.shots.filter(s => s.assetId === asset.id)
-        if (panels.length > 1) {
-          const baseStart = old[0]?.start ?? 0
-          const each = old.length ? old[0].duration / panels.length : 3 / panels.length
-          panels.forEach((panel, index) => candidates.push({
-            id: newId(), assetId: asset.id, title: `Panel ${index+1} · ${asset.name}`,
-            dialogue: old[index]?.dialogue ?? "", speaker: old[index]?.speaker ?? "",
-            start: baseStart + each*index, duration: each, zoom: 1.04, crop: panel,
-          }))
-        } else {
-          candidates.push(...(old.length ? old : [{id:newId(),assetId:asset.id,title:asset.name,dialogue:"",speaker:"",start:candidates.length*3,duration:3,zoom:1.05}]))
-        }
-      } catch {
-        setNotice(`Could not inspect ${asset.name}; kept it as a single shot.`)
+    try {
+      for(const asset of project.assets){
+        if(!asset.type.startsWith("image/"))continue
+        setNotice(`Detecting panel boundaries in ${asset.name}…`)
+        const regions=await detectComicRegions(asset.blob)
+        const old=project.shots.filter(s=>s.assetId===asset.id)
+        const each=old.length?Math.max(1,old.reduce((n,s)=>n+s.duration,0)/regions.length):3/regions.length
+        regions.forEach((region,index)=>candidates.push({
+          id:newId(),assetId:asset.id,title:regions.length===1?asset.name:`Panel ${index+1} · ${asset.name}`,
+          dialogue:old[index]?.dialogue??"",speaker:old[index]?.speaker??"",
+          start:old[0]?.start??0,duration:each,zoom:1.04,crop:region
+        }))
       }
-    }
-    if (candidates.length) {
-      let cursor = 0
-      const ordered = candidates.map(s => { const next = { ...s, start: cursor }; cursor += s.duration; return next })
-      updateProject({ shots: ordered })
+      if(!candidates.length){setNotice("Import images or video frames first.");return}
+      let cursor=0
+      const ordered=candidates.map(s=>{const next={...s,start:cursor};cursor+=next.duration;return next})
+      updateProject({shots:ordered})
       setSelectedShot(ordered[0].id)
-      setNotice("Panel heuristic complete. Review every candidate; white-gutter detection can miss panels or split artwork incorrectly.")
-    } else setNotice("Import page images first.")
-    setBusy(false)
+      setNotice(`Vision pass found ${ordered.length} panel candidate(s). Review the crop boxes; complex or borderless panels may need manual correction.`)
+    }catch(error){setNotice(error instanceof Error?error.message:"Panel detection failed. Check the network connection for the on-demand OpenCV engine.")}
+    finally{setBusy(false)}
+  }
+
+  async function runOcr() {
+    if(!project||!project.shots.length)return
+    setBusy(true)
+    let completed=0
+    try{
+      const nextShots=[...project.shots]
+      for(let i=0;i<nextShots.length;i++){
+        const shot=nextShots[i]
+        const asset=project.assets.find(a=>a.id===shot.assetId)
+        if(!asset)continue
+        setNotice(`OCR ${i+1}/${nextShots.length}: ${shot.title}…`)
+        const region=shot.crop?await cropRegion(asset.blob,shot.crop):asset.blob
+        const result=await extractText(region,project.language==="hi"?"hin+eng":"eng")
+        if(result.text)nextShots[i]={...shot,dialogue:shot.dialogue.trim()?shot.dialogue:result.text}
+        completed++
+      }
+      updateProject({shots:nextShots})
+      setNotice(`OCR pass finished for ${completed} shot(s). Review and correct recognized text; comic lettering, stylized fonts and speech bubbles can lower accuracy.`)
+    }catch(error){setNotice(error instanceof Error?error.message:"OCR failed. The OCR engine and language data load on demand.")}
+    finally{setBusy(false)}
+  }
+
+  async function rectifyAssets() {
+    if(!project)return
+    setBusy(true)
+    try{
+      const replacements=new Map<string,Blob>()
+      for(const asset of project.assets){
+        setNotice(`Correcting page perspective: ${asset.name}…`)
+        replacements.set(asset.id,await rectifyPage(asset.blob))
+      }
+      const assets=project.assets.map(asset=>{const blob=replacements.get(asset.id);return blob?{...asset,blob,size:blob.size,type:"image/jpeg"}:asset})
+      updateProject({assets})
+      setNotice("Page rectification pass complete. Review pages and run Detect panels again.")
+    }catch(error){setNotice(error instanceof Error?error.message:"Perspective correction failed.")}
+    finally{setBusy(false)}
   }
 
   function exportProject() {
@@ -422,7 +469,7 @@ export default function IndicaWorkspacePage() {
             </section>
             <section className="rounded-2xl border border-white/10 bg-white/[.025] p-3">
               <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-widest text-white/45">Engine status</h2>
-              <div className="space-y-2 text-xs"><Status label="Local project storage" state="Ready"/><Status label="Panel detection" state="Heuristic"/><Status label="OCR" state="Manual fallback"/><Status label="System voice preview" state={typeof window!=="undefined"&&"speechSynthesis" in window?"Available":"Browser dependent"}/><Status label="AI provider" state="Not connected"/><Status label="Video render" state="Browser encoder"/></div>
+              <div className="space-y-2 text-xs"><Status label="Local project storage" state="Ready"/><Status label="Panel detection" state="OpenCV contours"/><Status label="OCR" state="Tesseract.js"/><Status label="System voice preview" state={typeof window!=="undefined"&&"speechSynthesis" in window?"Available":"Browser dependent"}/><Status label="AI provider" state="Not connected"/><Status label="Video render" state="Browser encoder"/></div>
             </section>
           </aside>
 
@@ -439,13 +486,13 @@ export default function IndicaWorkspacePage() {
                 <Metric label="Source pages" value={project.assets.length.toString()}/><Metric label="Timeline shots" value={project.shots.length.toString()}/><Metric label="Runtime" value={fmt(duration)}/><Metric label="Local assets" value={`${(totalBytes/1024/1024).toFixed(1)} MB`}/>
               </div>
               <div onDragOver={e=>{e.preventDefault();setIsDragging(true)}} onDragLeave={()=>setIsDragging(false)} onDrop={e=>{e.preventDefault();setIsDragging(false);void importFiles(e.dataTransfer.files)}} className={`rounded-2xl border border-dashed p-5 transition ${isDragging?"border-violet-200 bg-violet-200/[.06]":"border-white/15 bg-white/[.02]"}`}>
-                <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-300/10 text-violet-100"><IconBook2 size={20}/></span><div><h2 className="text-sm font-semibold">Import comic pages</h2><p className="mt-1 text-xs text-white/40">JPG, PNG, WEBP · up to {MAX_COMIC_FILES} images / 500 MB per project</p></div></div><button disabled={busy} onClick={()=>fileInput.current?.click()} className="rounded-lg bg-white px-4 py-2.5 text-xs font-semibold text-black disabled:opacity-40">{busy?"Working…":"Choose images"}</button></div>
-                <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple className="hidden" onChange={e=>{void importFiles(e.currentTarget.files);e.currentTarget.value=""}}/>
+                <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-300/10 text-violet-100"><IconBook2 size={20}/></span><div><h2 className="text-sm font-semibold">Import comic pages</h2><p className="mt-1 text-xs text-white/40">JPG, PNG, WEBP, PDF or MP4/MOV/WEBM · up to {MAX_COMIC_FILES} pages/frames / 500 MB</p></div></div><button disabled={busy} onClick={()=>fileInput.current?.click()} className="rounded-lg bg-white px-4 py-2.5 text-xs font-semibold text-black disabled:opacity-40">{busy?"Working…":"Choose images"}</button></div>
+                <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/webm,video/quicktime,.mov,.m4v" multiple className="hidden" onChange={e=>{void importFiles(e.currentTarget.files);e.currentTarget.value=""}}/>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div className="flex gap-1 rounded-lg border border-white/10 bg-white/[.025] p-1">{(["assets","storyboard","dialogue","export"] as const).map(tab=><button key={tab} onClick={()=>setActiveTab(tab)} className={`rounded-md px-3 py-2 text-xs capitalize ${activeTab===tab?"bg-violet-300/15 text-violet-100":"text-white/45 hover:text-white"}`}>{tab}</button>)}</div>
-                <div className="flex flex-wrap gap-2"><button disabled={busy||!project.assets.length} onClick={()=>void detectPanels()} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40"><IconRefresh size={14} className="mr-1 inline"/> Detect panels</button></div>
+                <div className="flex flex-wrap gap-2"><button disabled={busy||!project.assets.length} onClick={()=>void rectifyAssets()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 disabled:opacity-40">Rectify pages</button><button disabled={busy||!project.assets.length} onClick={()=>void detectPanels()} className="rounded-lg border border-violet-200/20 px-3 py-2 text-xs text-violet-100 disabled:opacity-40"><IconRefresh size={14} className="mr-1 inline"/> Detect panels</button><button disabled={busy||!project.shots.length} onClick={()=>void runOcr()} className="rounded-lg border border-cyan-200/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-40">Run OCR</button></div>
               </div>
 
               {activeTab==="assets"&&<div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold">Source asset library</h2><p className="mt-1 text-xs text-white/40">Original image files stored in this browser’s IndexedDB.</p></div><button onClick={()=>fileInput.current?.click()} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/[.05]"><IconPlus size={14} className="mr-1 inline"/> Add assets</button></div>{project.assets.length?<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{project.assets.map((asset,index)=><AssetCard key={asset.id} asset={asset} index={index} onRemove={()=>updateProject({assets:project.assets.filter(a=>a.id!==asset.id),shots:project.shots.filter(s=>s.assetId!==asset.id)})}/>)}</div>:<Empty text="No source assets yet. Import comic page images above."/>}</div>}
