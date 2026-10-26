@@ -195,88 +195,89 @@ class Handler(BaseHTTPRequestHandler):
                 width, height = 900, 900
             else:
                 width, height = 1280, 720
-            with tempfile.TemporaryDirectory(prefix="indica-render-") as temp:
-                root = Path(temp)
-                clips: list[Path] = []
-                audio_files: list[Path] = []
-                subtitles: list[str] = []
-                cursor = 0.0
-                total_frames = 0
-                tts_used = False
-                for index, shot in enumerate(shots):
-                    if not isinstance(shot, dict):
-                        raise ValueError("Invalid shot entry.")
-                    duration = seconds(shot.get("duration"))
-                    image = decode_image(str(shot.get("imageDataUrl", "")), root / f"source-{index:03}")
-                    text = str(shot.get("dialogue", "")).strip()
-                    voice = root / f"voice-{index:03}.wav"
-                    has_voice = make_tts(text, voice, root)
-                    tts_used = tts_used or has_voice
-                    # Extend the shot slot when speech is longer so generated dialogue is not truncated.
-                    if has_voice:
-                        duration = max(duration, media_duration(voice) + 0.15)
-                    if duration > 120:
-                        raise ValueError("A shot cannot exceed 120 seconds after voice synchronization.")
-                    frames = max(6, round(duration * FPS))
-                    duration = frames / FPS
-                    clip = root / f"clip-{index:03}.mp4"
-                    zoom = float(shot.get("zoom", 1.04))
-                    zoom = min(1.3, max(1.0, zoom))
-                    vf = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},zoompan=z='min(zoom+{(zoom-1)/max(1,frames):.8f},{zoom:.4f})':d={frames}:s={width}x{height}:fps={FPS},format=yuv420p"
-                    run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(image), "-vf", vf, "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS), str(clip)], timeout=180)
-                    clips.append(clip)
-                    if has_voice:
-                        fitted = root / f"audio-fit-{index:03}.wav"
-                        run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(voice), "-af", f"apad=pad_dur={duration},atrim=duration={duration}", "-ar", "24000", "-ac", "1", str(fitted)])
-                        audio_files.append(fitted)
+            with RENDER_LOCK:
+                with tempfile.TemporaryDirectory(prefix="indica-render-") as temp:
+                    root = Path(temp)
+                    clips: list[Path] = []
+                    audio_files: list[Path] = []
+                    subtitles: list[str] = []
+                    cursor = 0.0
+                    total_frames = 0
+                    tts_used = False
+                    for index, shot in enumerate(shots):
+                        if not isinstance(shot, dict):
+                            raise ValueError("Invalid shot entry.")
+                        duration = seconds(shot.get("duration"))
+                        image = decode_image(str(shot.get("imageDataUrl", "")), root / f"source-{index:03}")
+                        text = str(shot.get("dialogue", "")).strip()
+                        voice = root / f"voice-{index:03}.wav"
+                        has_voice = make_tts(text, voice, root)
+                        tts_used = tts_used or has_voice
+                        # Extend the shot slot when speech is longer so generated dialogue is not truncated.
+                        if has_voice:
+                            duration = max(duration, media_duration(voice) + 0.15)
+                        if duration > 120:
+                            raise ValueError("A shot cannot exceed 120 seconds after voice synchronization.")
+                        frames = max(6, round(duration * FPS))
+                        duration = frames / FPS
+                        clip = root / f"clip-{index:03}.mp4"
+                        zoom = float(shot.get("zoom", 1.04))
+                        zoom = min(1.3, max(1.0, zoom))
+                        vf = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},zoompan=z='min(zoom+{(zoom-1)/max(1,frames):.8f},{zoom:.4f})':d={frames}:s={width}x{height}:fps={FPS},format=yuv420p"
+                        run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(image), "-vf", vf, "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS), str(clip)], timeout=180)
+                        clips.append(clip)
+                        if has_voice:
+                            fitted = root / f"audio-fit-{index:03}.wav"
+                            run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(voice), "-af", f"apad=pad_dur={duration},atrim=duration={duration}", "-ar", "24000", "-ac", "1", str(fitted)])
+                            audio_files.append(fitted)
+                        else:
+                            silence = root / f"silence-{index:03}.wav"
+                            run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", f"{duration:.6f}", "-ar", "24000", "-ac", "1", str(silence)])
+                            audio_files.append(silence)
+                        if text:
+                            subtitles.append(f"{len(subtitles)+1}\n{srt_time(cursor)} --> {srt_time(cursor+duration)}\n{text.replace(chr(10), ' ').replace(chr(13), ' ')}\n")
+                        cursor += duration
+                        total_frames += frames
+                    concat_file = root / "concat.txt"
+                    concat_file.write_text("".join(f"file '{clip.as_posix()}'\n" for clip in clips), encoding="utf-8")
+                    raw_video = root / "video.mp4"
+                    run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", "-movflags", "+faststart", str(raw_video)])
+                    audio_list = root / "audio.txt"
+                    audio_list.write_text("".join(f"file '{audio.as_posix()}'\n" for audio in audio_files), encoding="utf-8")
+                    voice_track = root / "voice-track.wav"
+                    run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(audio_list), "-c:a", "pcm_s16le", "-ar", "24000", "-ac", "1", str(voice_track)])
+                    srt_file = root / "subtitles.srt"
+                    srt_file.write_text("\n".join(subtitles), encoding="utf-8")
+                    final_video = root / "episode.mp4"
+                    # MP4 contains H.264 video and AAC voice audio; subtitles are embedded when available.
+                    mux = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_video), "-i", str(voice_track)]
+                    if subtitles:
+                        mux.extend(["-i", str(srt_file), "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0", "-c:s", "mov_text"])
                     else:
-                        silence = root / f"silence-{index:03}.wav"
-                        run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", f"{duration:.6f}", "-ar", "24000", "-ac", "1", str(silence)])
-                        audio_files.append(silence)
-                    if text:
-                        subtitles.append(f"{len(subtitles)+1}\n{srt_time(cursor)} --> {srt_time(cursor+duration)}\n{text.replace(chr(10), ' ').replace(chr(13), ' ')}\n")
-                    cursor += duration
-                    total_frames += frames
-                concat_file = root / "concat.txt"
-                concat_file.write_text("".join(f"file '{clip.as_posix()}'\n" for clip in clips), encoding="utf-8")
-                raw_video = root / "video.mp4"
-                run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", "-movflags", "+faststart", str(raw_video)])
-                audio_list = root / "audio.txt"
-                audio_list.write_text("".join(f"file '{audio.as_posix()}'\n" for audio in audio_files), encoding="utf-8")
-                voice_track = root / "voice-track.wav"
-                run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(audio_list), "-c:a", "pcm_s16le", "-ar", "24000", "-ac", "1", str(voice_track)])
-                srt_file = root / "subtitles.srt"
-                srt_file.write_text("\n".join(subtitles), encoding="utf-8")
-                final_video = root / "episode.mp4"
-                # MP4 contains H.264 video and AAC voice audio; subtitles are embedded when available.
-                mux = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_video), "-i", str(voice_track)]
-                if subtitles:
-                    mux.extend(["-i", str(srt_file), "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0", "-c:s", "mov_text"])
-                else:
-                    mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
-                mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
-                run(mux)
-                manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
-                manifest_file = root / "render-manifest.json"
-                manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-                bundle = io.BytesIO()
-                with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-                    archive.write(final_video, "episode.mp4")
-                    archive.write(voice_track, "voice-track.wav")
-                    archive.write(srt_file, "subtitles.srt")
-                    archive.write(manifest_file, "render-manifest.json")
-                payload = bundle.getvalue()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/zip")
-            self.send_header("Content-Disposition", 'attachment; filename="indica-render-bundle.zip"')
-            self.send_header("Cache-Control", "no-store")
-            origin = self._origin()
-            if origin:
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Vary", "Origin")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+                        mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
+                    mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
+                    run(mux)
+                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text"}
+                    manifest_file = root / "render-manifest.json"
+                    manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+                    bundle = io.BytesIO()
+                    with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                        archive.write(final_video, "episode.mp4")
+                        archive.write(voice_track, "voice-track.wav")
+                        archive.write(srt_file, "subtitles.srt")
+                        archive.write(manifest_file, "render-manifest.json")
+                    payload = bundle.getvalue()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", 'attachment; filename="indica-render-bundle.zip"')
+                self.send_header("Cache-Control", "no-store")
+                origin = self._origin()
+                if origin:
+                    self.send_header("Access-Control-Allow-Origin", origin)
+                    self.send_header("Vary", "Origin")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
         except ValueError as exc:
             self._json(400, {"error": str(exc)})
         except subprocess.TimeoutExpired:
