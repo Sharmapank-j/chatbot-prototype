@@ -1,41 +1,35 @@
-# Offline and laptop operation
+# Offline and laptop mode
 
 ## Contract
-
-Strict offline mode makes zero external HTTP/API calls. It is not synonymous with “some models run locally”: the app must show the actual installed engine/model capabilities and degrade gracefully.
+Strict offline mode makes zero external HTTP/API calls. It does not imply all AI models run locally. The UI must show which engines, model weights, OCR languages, TTS voices and GPU features are actually available.
 
 ## Base local workflow
+- Import and order page images/PDF; preserve originals.
+- OpenCV heuristics create panel candidates; user can correct them.
+- OCR runs only if an engine is installed; show unsupported-language and low-confidence warnings.
+- Edit dialogue, speakers, translations, shot timing and subtitles.
+- Use FFmpeg for local pan/zoom motion-comic, fades/cuts and MP4 export.
+- Export SRT/VTT and a JSON project manifest.
+- Store files in a selected local workspace and manage cache explicitly.
 
-- Import pages/PDF and keep all originals under a user-selected workspace.
-- Detect candidate panel borders using OpenCV heuristics and allow manual correction.
-- Run OCR only if an OCR engine is installed; display unsupported-language and low-confidence warnings.
-- Edit dialogue, speaker, translation, timing and subtitle text.
-- Generate motion-comic video using local FFmpeg: static panels with pan/zoom, fade/cut transitions and subtitle tracks.
-- Export MP4, SRT/VTT and JSON project manifest.
-- All intermediate artefacts are inspectable and can be deleted via explicit cleanup.
-
-## Optional local engines
-
-- OCR: Tesseract (include/verify Hindi language data separately) or PaddleOCR if the installed build supports Hindi and required dependencies.
-- LLM: Ollama or another OpenAI-compatible localhost endpoint. In strict offline mode, allow loopback only; block public endpoints.
-- Image generation: local ComfyUI-compatible endpoint or local inference runner only when the model fits available VRAM/RAM.
-- Video: local workflow/engine with explicit compatible-model capability declaration; don't claim desktop RTX 3050 can run every current video model.
-- TTS: installed local Hindi/English voice engine and corresponding voice models. Check language coverage before selecting.
-- Rendering: FFmpeg/ffprobe.
+## Optional local models
+- OCR: Tesseract with appropriate language data or PaddleOCR build validated for the required script.
+- LLM: Ollama or compatible localhost model; strict mode permits loopback only.
+- Image generation: local ComfyUI-compatible endpoint or inference engine only when model/hardware are supported.
+- Video generation: a compatible local workflow; never promise it fits every laptop.
+- TTS: an installed local engine with Hindi/English voice models.
+- FFmpeg/ffprobe: local media operations.
 
 ## Laptop profile
-
-Use CPU for ingestion, project editing and low-resolution motion-comic rendering. Use the NVIDIA GPU only for supported models. Provide presets: Draft 720p, Final 1080p, portrait 1080x1920. Avoid auto-downloading multi-gigabyte model weights at setup. Model downloads require explicit opt-in and licence review.
+CPU handles ingest, panel editing, subtitles and draft rendering. Use GPU only for model/hardware pairs verified by preflight. Provide Draft 720p, 1080p final and portrait 1080x1920 presets. Do not auto-download multi-GB model weights.
 
 ## First-run preflight
-
-Report OS, Python, Node, FFmpeg, OCR languages, available GPU/VRAM, configured localhost endpoints and disk-space estimate. Redact paths when sending telemetry; default telemetry off.
+Check OS, Node, Python, FFmpeg, OCR engines/languages, available GPU/VRAM, local endpoints and disk space. Telemetry off by default; redact paths and file names.
 
 ## Security
-
-- API providers disabled by default.
-- Strict offline mode rejects non-loopback provider URLs.
-- Prevent arbitrary URLs in image/movie inputs to avoid SSRF.
-- Use allowlisted local paths; guard path traversal and archive bombs.
-- Never execute code/config parsed from a comic.
-- Keep secrets only in ignored local env files / OS credential storage.
+- Cloud providers disabled by default.
+- Offline mode rejects non-loopback provider URLs.
+- Do not fetch arbitrary URLs as media inputs; prevent SSRF.
+- Use allowlisted workspace paths and protect against path traversal/archive bombs.
+- Treat OCR and model outputs as untrusted data.
+- Keep secrets in ignored local env or OS credential storage.
