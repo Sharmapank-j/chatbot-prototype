@@ -654,7 +654,8 @@ export default function IndicaWorkspacePage() {
   )
 }
 
-function GenUICopy(value:string) { void navigator.clipboard?.writeText(value) }\nfunction Status({label,state}:{label:string;state:string}) { return <div className="flex items-center justify-between gap-2"><span className="text-white/45">{label}</span><span className="text-right text-[10px] text-emerald-100/65">{state}</span></div> }
+function GenUICopy(value:string) { void navigator.clipboard?.writeText(value) }
+function Status({label,state}:{label:string;state:string}) { return <div className="flex items-center justify-between gap-2"><span className="text-white/45">{label}</span><span className="text-right text-[10px] text-emerald-100/65">{state}</span></div> }
 function Metric({label,value}:{label:string;value:string}) { return <div className="rounded-xl border border-white/10 bg-white/[.025] p-3"><div className="text-[10px] uppercase tracking-widest text-white/35">{label}</div><div className="mt-2 text-xl font-semibold">{value}</div></div> }
 function Empty({text}:{text:string}) { return <div className="rounded-xl border border-dashed border-white/10 p-7 text-center text-xs leading-5 text-white/35">{text}</div> }
 function AssetCard({asset,index,onRemove}:{asset:Asset;index:number;onRemove:()=>void}) {
