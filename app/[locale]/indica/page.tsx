@@ -163,6 +163,14 @@ export default function IndicaWorkspacePage() {
   const [localWorkerUrl, setLocalWorkerUrl] = useState("http://127.0.0.1:8765")
   const [localWorkerToken, setLocalWorkerToken] = useState("")
   const [localWorkerStatus, setLocalWorkerStatus] = useState("Not checked")
+  const [providerMode, setProviderMode] = useState<"hosted"|"local">("hosted")
+  const [localModelPath, setLocalModelPath] = useState("")
+  const [localModelName, setLocalModelName] = useState("")
+  const [localModelStatus, setLocalModelStatus] = useState("No local GGUF loaded")
+  const [localContext, setLocalContext] = useState(4096)
+  const [localGpuLayers, setLocalGpuLayers] = useState(-1)
+  const localModelInput = useRef<HTMLInputElement>(null)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const restoreInput = useRef<HTMLInputElement>(null)
   const totalBytes = useMemo(() => project?.assets.reduce((n, a) => n + a.size, 0) ?? 0, [project])
@@ -425,6 +433,7 @@ export default function IndicaWorkspacePage() {
     } finally {URL.revokeObjectURL(url)}
   }
   async function analyzeCurrentPage() {
+    if(providerMode==="local"){setNotice("The current llama.cpp adapter is text-only. Run local OCR for text extraction; image understanding requires a multimodal GGUF and a separately configured vision-capable inference path.");return}
     if(!project||!activeShot){setNotice("Import a comic page and select a shot first.");return}
     const asset=project.assets.find(a=>a.id===activeShot.assetId)
     if(!asset){setNotice("The selected shot has no source image.");return}
@@ -452,12 +461,13 @@ export default function IndicaWorkspacePage() {
     if(!project||!project.shots.length){setNotice("Import pages and create a storyboard before generating a scene plan.");return}
     const summary=project.shots.map((shot,index)=>({shot:index+1,title:shot.title,dialogue:shot.dialogue,speaker:shot.speaker,start:shot.start,duration:shot.duration,source:project.assets.find(a=>a.id===shot.assetId)?.name} ))
     const prompt="You are a comic-to-anime pre-production director. Use this storyboard to produce a coherent, production-ready scene plan. Return shot-by-shot JSON with visual_prompt, preserve_character_design, camera_motion, transitions, ambient_audio, voice_direction, subtitle_text, and negative_prompt. Do not claim to have generated media. Preserve the source story and character continuity. Storyboard: "+JSON.stringify({project:project.name,language:project.language,aspect:project.aspect,shots:summary})
-    const result=await callAiProvider("generate",prompt)
-    if(result)setNotice("AI scene plan generated. Review it before using its prompts for image/video generation.")
+    const result=providerMode==="local"?await runLocalLlm(prompt):await callAiProvider("generate",prompt)
+    if(result)setNotice(providerMode==="local"?"Local GGUF scene plan generated without cloud inference.":"AI scene plan generated. Review it before using its prompts for image/video generation.")
   }
   async function generateImage() {
     const prompt=providerResult.trim()
     if(!prompt){setNotice("Run vision analysis or generate a scene plan first; the result will become the image-generation prompt.");return}
+    if(providerMode==="local"){setNotice("A GGUF chat model generates text, not images. Switch to hosted image generation or connect a separate local image-generation tool.");return}
     const result=await callAiProvider("generate-image",prompt)
     if(result)setNotice("Image-generation request completed. Provider support depends on its OpenAI-compatible Images API.")
   }
@@ -466,16 +476,58 @@ export default function IndicaWorkspacePage() {
     if(url.protocol!=="http:"||!["127.0.0.1","localhost","[::1]"].includes(url.hostname))throw new Error("For security, the media worker must be an HTTP loopback URL such as http://127.0.0.1:8765.")
     return url.origin
   }
+  async function localWorkerFetch(path:string, body?:unknown) {
+    const base=validateLocalWorkerUrl(localWorkerUrl)
+    const response=await fetch(base+path,{
+      method:body===undefined?"GET":"POST",
+      headers:body===undefined?{"Cache-Control":"no-store"}:{"Content-Type":"application/json","Authorization":`Bearer ${localWorkerToken.trim()}`},
+      ...(body===undefined?{}:{body:JSON.stringify(body)}),
+      cache:"no-store"
+    })
+    const result=await response.json().catch(()=>({error:"Local worker returned an invalid response."})) as {error?:string;message?:string;ready?:boolean;model?:string;text?:string;service?:string;ffmpeg?:boolean;piper?:boolean;llamaCpp?:boolean;llamaModel?:string}
+    if(!response.ok)throw new Error(result.error||result.message||`Local worker returned HTTP ${response.status}.`)
+    return result
+  }
   async function checkLocalWorker() {
     try {
-      const base=validateLocalWorkerUrl(localWorkerUrl)
-      const response=await fetch(base+"/health",{cache:"no-store"})
-      if(!response.ok)throw new Error("Local worker health check failed.")
-      const health=await response.json() as {service?:string;ffmpeg?:boolean;piper?:boolean}
+      const health=await localWorkerFetch("/health")
       if(health.service!=="indica-local-worker")throw new Error("This endpoint is not an Indica local worker.")
-      setLocalWorkerStatus(`FFmpeg ${health.ffmpeg?"ready":"missing"} · Piper TTS ${health.piper?"ready":"not configured"}`)
-      setNotice(health.piper?"Local FFmpeg and Piper TTS are ready.":"FFmpeg is reachable. Configure Piper and INDICA_PIPER_MODEL to export speech; otherwise the audio track will contain silence.")
-    }catch(error){setLocalWorkerStatus("Unavailable");setNotice(error instanceof Error?error.message:"Could not connect to the local media worker. Start scripts/indica_local_worker.py on this computer.")}
+      setLocalWorkerStatus(`FFmpeg ${health.ffmpeg?"ready":"missing"} · Piper TTS ${health.piper?"ready":"not configured"} · llama.cpp ${health.llamaCpp?"ready":"not loaded"}`)
+      setLocalModelStatus(health.llamaCpp?`Ready: ${health.llamaModel||"local GGUF"}`:"No local GGUF loaded")
+      setNotice("Connected to the local worker. A selected GGUF model stays on this computer.")
+    }catch(error){setLocalWorkerStatus("Unavailable");setNotice(error instanceof Error?error.message:"Could not connect to the local worker. Start scripts/indica_local_worker.py on this computer.")}
+  }
+  async function loadLocalGguf() {
+    if(!localWorkerToken.trim()){setNotice("Start the local worker and paste its session token before loading a GGUF.");return}
+    if(!localModelPath){setNotice("Choose a .gguf model file in the local file picker.");return}
+    setProviderBusy(true);setLocalModelStatus("Loading model into local llama.cpp…")
+    try {
+      const result=await localWorkerFetch("/llama/load",{modelPath:localModelPath,contextTokens:localContext,gpuLayers:localGpuLayers,waitSeconds:120})
+      setLocalModelName(result.model||localModelPath.split(/[\\/]/).pop()||"local model")
+      setLocalModelStatus(result.ready?`Ready: ${result.model}`:`Still loading: ${result.model||"local GGUF"}`)
+      setNotice(result.message||"Local GGUF provider initialized.")
+      setProviderMode("local")
+    } catch(error) {setLocalModelStatus("Load failed");setNotice(error instanceof Error?error.message:"Could not load local GGUF model.")}
+    finally {setProviderBusy(false)}
+  }
+  async function unloadLocalGguf() {
+    try {const result=await localWorkerFetch("/llama/unload",{});setLocalModelStatus("No local GGUF loaded");setLocalModelName("");setNotice(result.message||"Local model unloaded.")}
+    catch(error){setNotice(error instanceof Error?error.message:"Could not unload local GGUF model.")}
+  }
+  async function runLocalLlm(prompt:string) {
+    if(!localWorkerToken.trim()){setNotice("Paste the local worker token before sending a prompt.");return null}
+    setProviderBusy(true);setProviderResult("");setProviderImage("")
+    try {
+      const result=await localWorkerFetch("/llama/chat",{prompt,system:"You are a precise comic-to-anime production assistant. Return JSON when asked, and never claim to have created media that you did not create."})
+      if(!result.text)throw new Error("Local model returned no text.")
+      setProviderResult(result.text);setNotice(`Response generated locally with ${result.model||localModelName||"GGUF model"}. Prompt stayed on this device.`)
+      return result.text
+    } catch(error){setNotice(error instanceof Error?error.message:"Local llama.cpp inference failed.");return null}
+    finally {setProviderBusy(false)}
+  }
+  async function pollLocalGguf() {
+    try {const result=await localWorkerFetch("/llama/status");setLocalModelStatus(result.ready?`Ready: ${result.model||"local GGUF"}`:"Model not ready");if(result.ready&&result.model)setLocalModelName(result.model)}
+    catch(error){setNotice(error instanceof Error?error.message:"Could not query local model status.")}
   }
   async function renderVideo() {
     if(!project||!project.shots.length){setNotice("Import pages and create at least one storyboard shot before rendering.");return}
