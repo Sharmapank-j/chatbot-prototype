@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { IconArrowLeft, IconBook2, IconCheck, IconFileTypePdf, IconMovie, IconPhoto, IconRefresh, IconShieldLock, IconVolume } from "@tabler/icons-react"
+import { IconArrowLeft, IconBook2, IconCheck, IconFileTypePdf, IconPhoto, IconRefresh, IconShieldLock } from "@tabler/icons-react"
 import Link from "next/link"
 import { classifyComicFile, MAX_COMIC_BATCH_BYTES, MAX_COMIC_FILES } from "@/lib/indica/file-validation"
 
