@@ -15,8 +15,8 @@
 - Speaker list and dialogue editor.
 - Shot timeline with cut, fade, pan and zoom.
 - SRT/VTT import/export.
-- Local TTS only where an installed voice engine/model exists.
-- FFmpeg MP4 rendering with optional local audio and subtitles.
+- Local TTS only where an installed voice engine/model exists. The companion worker supports Piper ONNX models configured via environment variables; voice model setup remains user-managed.
+- FFmpeg H.264 MP4 rendering with a 24 fps frame-count-based zoom timeline, AAC audio, optional embedded mov_text subtitles, separate WAV voice track, SRT and render manifest. Requires local FFmpeg/FFprobe; Piper adds speech.
 - First-run capability preflight, no model downloads without explicit consent.
 
 **Acceptance:** with outbound networking blocked after setup, user imports comic pages, corrects panel order/text, builds a timed motion-comic and exports a playable MP4.
