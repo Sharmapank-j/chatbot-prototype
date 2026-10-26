@@ -29,6 +29,8 @@ FFMPEG = os.environ.get("INDICA_FFMPEG_BIN", "ffmpeg")
 FFPROBE = os.environ.get("INDICA_FFPROBE_BIN", "ffprobe")
 PIPER = os.environ.get("INDICA_PIPER_BIN", "piper")
 PIPER_MODEL = os.environ.get("INDICA_PIPER_MODEL", "").strip()
+PIPER_MODEL_HI = os.environ.get("INDICA_PIPER_MODEL_HI", "").strip()
+PIPER_MODEL_EN = os.environ.get("INDICA_PIPER_MODEL_EN", "").strip()
 MAX_BODY = 180 * 1024 * 1024
 MAX_SHOTS = 30
 FPS = 24
@@ -88,10 +90,11 @@ def media_duration(path: Path) -> float:
     return max(0.0, float(result.stdout.strip()))
 
 
-def make_tts(text: str, target: Path, scratch: Path) -> bool:
-    if not text.strip() or not PIPER_MODEL or not command_available(PIPER):
+def make_tts(text: str, target: Path, scratch: Path, language: str = "hi") -> bool:
+    selected_model = (PIPER_MODEL_EN if language == "en" else PIPER_MODEL_HI) or PIPER_MODEL
+    if not text.strip() or not selected_model or not command_available(PIPER):
         return False
-    model = Path(PIPER_MODEL)
+    model = Path(selected_model)
     if not model.is_file():
         raise RuntimeError("INDICA_PIPER_MODEL does not point to an existing .onnx voice model.")
     config = Path(str(model) + ".json")
@@ -169,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
             "service": "indica-local-worker",
             "ffmpeg": command_available(FFMPEG),
             "ffprobe": command_available(FFPROBE),
-            "piper": command_available(PIPER) and bool(PIPER_MODEL and Path(PIPER_MODEL).is_file()),
+            "piper": command_available(PIPER) and any(Path(model).is_file() for model in (PIPER_MODEL, PIPER_MODEL_HI, PIPER_MODEL_EN) if model),
             "tokenRequired": True,
             "version": 1
         })
@@ -213,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
                         image = decode_image(str(shot.get("imageDataUrl", "")), root / f"source-{index:03}")
                         text = str(shot.get("dialogue", "")).strip()
                         voice = root / f"voice-{index:03}.wav"
-                        has_voice = make_tts(text, voice, root)
+                        has_voice = make_tts(text, voice, root, language)
                         tts_used = tts_used or has_voice
                         # Extend the shot slot when speech is longer so generated dialogue is not truncated.
                         if has_voice:
