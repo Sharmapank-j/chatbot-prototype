@@ -113,6 +113,8 @@ class LocalWorkerHttpTests(unittest.TestCase):
         manifest = json.loads(bundle.read("render-manifest.json"))
         self.assertEqual(manifest["fps"], 24)
         self.assertEqual(manifest["videoCodec"], "H.264")
+        self.assertFalse(manifest["ttsUsed"])
+        self.assertEqual(len(manifest["shots"][0]["sourceSha256"]), 64)
         self.assertIn("Hello test", bundle.read("subtitles.srt").decode("utf-8"))
         self.assertGreater(len(bundle.read("episode.mp4")), 1000)
         self.assertGreater(len(bundle.read("voice-track.wav")), 1000)
