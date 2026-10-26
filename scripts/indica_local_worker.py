@@ -44,7 +44,7 @@ def decode_image(data_url: str, destination: Path) -> Path:
     match = ALLOWED_IMAGE.fullmatch(data_url)
     if not match:
         raise ValueError("Each shot needs a base64 PNG, JPEG or WEBP source image.")
-    raw = base64.b64decode(match.group(2), validate=False)
+    raw = base64.b64decode(match.group(2).replace("\\r", "").replace("\\n", ""), validate=True)
     if not raw or len(raw) > 8 * 1024 * 1024:
         raise ValueError("Each rendered image must be no larger than 8 MB.")
     suffix = {"png": ".png", "jpeg": ".jpg", "webp": ".webp"}[match.group(1)]
@@ -259,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
                         mux.extend(["-map", "0:v:0", "-map", "1:a:0"])
                     mux.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", f"{cursor:.6f}", "-movflags", "+faststart", str(final_video)])
                     run(mux)
-                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text", "ffmpeg": FFMPEG, "shots": shot_manifest}
+                    manifest = {"formatVersion": 1, "fps": FPS, "width": width, "height": height, "duration": round(cursor, 6), "frames": total_frames, "ttsUsed": tts_used, "audio": "Piper local TTS" if tts_used else "silence (Piper not configured or no dialogue)", "videoCodec": "H.264", "audioCodec": "AAC", "subtitleCodec": "mov_text" if subtitles else None, "ffmpeg": FFMPEG, "shots": shot_manifest}
                     manifest_file = root / "render-manifest.json"
                     manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
                     bundle = io.BytesIO()
