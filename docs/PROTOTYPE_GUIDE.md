@@ -34,6 +34,17 @@ Vercel hosts the UI; media rendering runs in a separate local worker because ser
 5. The worker creates deterministic 24 fps H.264 video with AAC audio, a separate voice-track.wav, subtitles.srt and render-manifest.json in a ZIP. If Piper is not configured, the audio track is silence and the manifest says so. The render currently supports up to 30 shots per job and a maximum 180 MB JSON request.
 6. The worker is loopback-only and requires the token. The token is held in page memory and is not included in project backups. Do not expose the worker port to your LAN or internet.
 
+## Local llama.cpp and GGUF provider
+
+The AI tab has a Local GGUF mode. It talks to the local worker at 127.0.0.1; the selected model itself is not uploaded to Vercel or the hosted provider relay.
+
+1. Install a build of llama.cpp that includes `llama-server`, and ensure `llama-server` is available on PATH.
+2. Start `python scripts/indica_local_worker.py` from the repository root. Keep it bound to loopback. Copy the one-run worker token printed by the process into the AI tab.
+3. In the AI tab, select Local GGUF, enter the absolute path to an existing `.gguf` file on the same computer, choose context size/GPU layers, then select Load GGUF model. Browsers intentionally do not expose local filesystem paths through ordinary file picker APIs; the path is typed explicitly, and only that path is sent to the local worker.
+4. Use Generate scene plan locally. The current llama.cpp adapter handles text generation. It does not infer images, generate images, or perform video generation. For vision analysis, select a hosted vision model; image bytes are sent to that configured provider only when you explicitly invoke vision analysis.
+5. Loading a large GGUF can take several minutes and consumes system RAM/VRAM. Start with a quantized model that fits the computer. Unload the model when finished to release its process resources.
+6. Local GGUF chat requests are authenticated with the random worker token, limited in prompt/context length, and sent over loopback to llama.cpp. Do not expose the worker or llama.cpp port to the network.
+
 ## Current boundaries
 
 - OCR and PDF extraction are real browser engines, but depend on CDN availability unless their assets are self-hosted. Panel detection remains a contour heuristic; it is not a trained comic understanding model.
