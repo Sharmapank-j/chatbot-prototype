@@ -1,67 +1,72 @@
 # Indica Anime Us
 
-**Turn a batch of comic pages into a voiced, subtitled anime-style video — with local-first tools and optional cloud-quality generation.**
+**A local-first comic-to-anime production studio with editable storyboard, OCR, optional vision providers, local TTS and deterministic FFmpeg export.**
 
-## Product goal
+## Current workflow
 
-Upload multiple comic page images or a PDF. Indica Anime Us should automatically:
-1. Order pages and detect individual panels.
-2. Extract dialogue and narration with OCR; preserve editable original text and reading order.
-3. Identify speakers and recurring characters, then build a continuity sheet.
-4. Produce an editable, timed storyboard (panel/shot, camera motion, dialogue, voice, subtitles).
-5. Create anime-style shot motion with reusable model adapters and character references.
-6. Generate Hindi, English, or bilingual dialogue and synchronized subtitles.
-7. Assemble shots, audio, music, and captions into MP4 with FFmpeg; export SRT/VTT and project assets.
+1. Import comic page images, PDFs or supported videos.
+2. Extract PDF pages/video frames, detect panel candidates, and run English or Hindi+English OCR.
+3. Review panels and edit dialogue, speakers, shot order, crop and timing.
+4. Optionally connect an OpenAI-compatible vision LLM or image-generation endpoint. Cloud calls require a user-configured endpoint/key.
+5. Export a portable project bundle, SRT subtitles, or render through the local FFmpeg/Piper worker.
+6. The local render bundle includes H.264 MP4, a synchronized WAV voice track, SRT subtitles and a render manifest.
 
-**Honest offline promise:** The application shell, importing, panel review, editing, subtitle/timeline management, and motion-comic export are designed to work locally. High-quality generative image/video and neural voice models require separately installed model weights and suitable hardware, or an explicitly enabled cloud provider. Strict offline mode must fail closed instead of making network calls.
+## Architecture boundary
 
-## Try the hosted prototype\n\nThe Vercel preview dashboard lets testers create local projects, import page images, edit shot timing and dialogue, export SRT/project files, and render a browser-recorded motion-comic. It stores source assets in the current browser profile; it does not upload them to a shared project backend. See [docs/PROTOTYPE_GUIDE.md](docs/PROTOTYPE_GUIDE.md) for the supported workflow and limitations.\n\n## Quick start (Windows / laptop)
+The Vercel deployment hosts the web dashboard and optional AI-provider relay. It does not install FFmpeg or voice models on the user's laptop. Deterministic media work runs in scripts/indica_local_worker.py on loopback. FFmpeg and FFprobe are required for video export; Piper plus an installed ONNX voice model is required for speech. Without Piper, the worker intentionally emits a silent audio track and records that fact in the manifest.
 
-Requirements: Windows 10/11, Git, Node.js 20+, Python 3.11+, FFmpeg. Python CV/OCR extras are optional but recommended.
+OCR and PDF extraction use Tesseract.js and PDF.js loaded on demand in the browser. First use requires the configured CDN assets to be reachable. Panel detection is a heuristic and requires review.
+
+## Quick start
+
+Requirements: Windows 10/11 or a compatible desktop OS, Git, Node.js 20+, Python 3.11+, FFmpeg and FFprobe.
 
 ```powershell
 git clone --branch indica-anime-us <repository-url> indica-anime-us
 cd indica-anime-us
-.\scripts\setup-windows.ps1
+npm ci
+npm run dev
 ```
 
-The setup script is intended to create a Python virtual environment, check tool availability, and prepare local folders without downloading model weights. For the web UI, install npm dependencies and start the Next.js development server using the commands in the setup output.
+In another terminal, configure an optional Piper model and start the local media worker:
 
-## Local mode vs AI mode
-
-| Capability | Local/offline base | Optional local model | Cloud provider |
-|---|---|---|---|
-| Import/reorder comic pages | Yes | — | — |
-| Panel detection | OpenCV heuristic; manual corrections | Improved detector if installed | Optional vision adapter |
-| OCR | Tesseract if installed; correction UI required | PaddleOCR or compatible local OCR | Optional vision provider |
-| Storyboard/timeline/SRT | Yes | Local LLM may assist | Hosted LLM optional |
-| Motion-comic export | FFmpeg pan/zoom, cuts, fades | — | — |
-| Anime-style image/video generation | Not claimed by base renderer | Depends on VRAM/model | Optional provider adapter |
-| Voice | Silent/captioned output works | Local TTS if installed | Optional TTS provider |
-| Lip sync / complex character motion | Not guaranteed by base renderer | Model-specific | Optional video/lip-sync provider |
-
-## Architecture
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/ROADMAP.md](docs/ROADMAP.md), [docs/OFFLINE_MODE.md](docs/OFFLINE_MODE.md), [docs/AGENTS.md](docs/AGENTS.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Core pipeline
-
-```text
-Pages/PDF
-  -> page normalization + reading direction
-  -> panel detection + manual split/merge/order
-  -> OCR + editable dialogue/speaker assignment
-  -> character/style bible + story beats
-  -> storyboard JSON + editable timeline/SRT
-  -> still generation / image-to-video shots (provider adapters)
-  -> Hindi/English TTS + optional lip-sync
-  -> FFmpeg assembly, subtitles, mix, export
+```powershell
+$env:INDICA_PIPER_MODEL = "C:\models\en_US-voice-medium.onnx"
+python scripts/indica_local_worker.py
 ```
 
-## Data, rights, and safety
+The worker prints a random token. Open the studio Export tab, check the local worker, paste the token and choose Render MP4 + audio bundle. See the prototype guide for configuration and limits. Do not expose the local worker port outside loopback.
 
-Only process comic pages you own or are authorized to adapt. Copyright status varies by jurisdiction; uploading a page does not confer adaptation rights. Do not build scraping, paywall bypass, or DRM removal. Do not train on private project assets by default. Secrets belong in untracked environment variables and server-only settings. Local projects should remain in the chosen workspace directory; no silent cloud sync.
+## Test commands
 
-## Status
+```bash
+npm run type-check
+npm run lint
+npm test -- --runInBand
+npm run test:worker
+npm run build
+```
 
-The repository contains the product specification, architecture and an implementation foundation. A production-grade converter is a multi-stage build; do not label unimplemented AI functions as operational. Follow the roadmap and use acceptance tests for each stage.
+The Python worker test suite includes an actual synthetic FFmpeg render when FFmpeg/FFprobe are installed. CI installs these tools and runs the suite. This is not a substitute for manually checking a real comic, a configured Piper voice, the deployed UI and audio/subtitle synchronization.
+
+## Product boundaries
+
+| Capability | Current status |
+|---|---|
+| PDF page extraction | Browser PDF.js; max 30 pages per operation |
+| OCR | Tesseract.js; verify all text manually |
+| Panel detection | OpenCV contour heuristic |
+| Project backup/restore | Versioned portable JSON with embedded source assets and validation |
+| Vision LLM / image generation | Optional OpenAI-compatible endpoint; model capabilities vary |
+| MP4 rendering | Local FFmpeg worker; H.264 at 24 fps |
+| Local TTS | Piper ONNX model when installed/configured |
+| Voice audio and subtitles | WAV, SRT and embedded MP4 subtitle track in render bundle |
+| Generative anime/video shots and lip-sync | Separate provider/model integration; not claimed by the base renderer |
+
+## Agent orchestration
+
+Read docs/AGENT_ORCHESTRATION.md, agents/orchestrator.yaml, docs/ARCHITECTURE.md, docs/ROADMAP.md, docs/OFFLINE_MODE.md, and docs/AGENTS.md.
+
+## Rights and safety
+
+Only process comic pages you own or are authorized to adapt. Do not commit private source pages, API keys, model weights or generated media. Provider keys are never written to project backups. Review voice-model licensing and obtain permission before any voice cloning. Strict offline mode must fail closed instead of silently calling cloud APIs.
