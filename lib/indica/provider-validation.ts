@@ -19,7 +19,7 @@ export function parseImageDataUrl(value: string): { mime: string; base64: string
   const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(value)
   if (!match) return null
   const base64 = match[2].replace(/\s/g, "")
-  const size = Math.floor(base64.length * 3 / 4)
+  const size = Math.floor(base64.length * 3 / 4) - (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0)
   if (size <= 0 || size > MAX_PROVIDER_IMAGE_BYTES) return null
   return { mime: match[1], base64, size }
 }
