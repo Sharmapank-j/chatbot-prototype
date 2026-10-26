@@ -2,7 +2,7 @@
 export type Rect = { x: number; y: number; w: number; h: number }
 export type VisionPanel = Rect & { confidence: number; kind: "panel" | "text" | "bubble" }
 export type OcrWord = { text: string; confidence: number; box: Rect }
-type CvMat = { rows: number; cols: number; data: Uint8Array; delete(): void }
+type CvMat = { rows: number; cols: number; data: Uint8Array; data32S: Int32Array; delete(): void }
 type CvPoint = { x: number; y: number }
 type CvApi = Record<string, any>
 type TesseractApi = {
@@ -191,11 +191,11 @@ export async function extractText(blob: Blob, language = "eng+hin"): Promise<{te
 }
 export async function pdfToImages(file: File, maxPages = 30): Promise<Array<{name:string;blob:Blob}>> {
   const pdf=await getPdfJs()
-  const document=await pdf.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise
+  const pdfDocument=await pdf.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise
   const pages:Array<{name:string;blob:Blob}>=[]
-  const count=Math.min(document.numPages,maxPages)
+  const count=Math.min(pdfDocument.numPages,maxPages)
   for(let n=1;n<=count;n++){
-    const page=await document.getPage(n)
+    const page=await pdfDocument.getPage(n)
     const viewport=page.getViewport({scale:1.7})
     const canvas=document.createElement("canvas")
     canvas.width=Math.round(viewport.width);canvas.height=Math.round(viewport.height)
